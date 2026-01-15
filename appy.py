@@ -92,7 +92,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
-    r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
+    r1 = p.add_run(f"PROGRAMA DE ENTRAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
     r1.font.size = Pt(16)
     r1.font.color.rgb = RGBColor(41, 128, 185)
@@ -160,7 +160,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         row_cells[3].text = str(row_data['Peso'])
         row_cells[4].text = row_data['Descanso']
         # En notas ponemos el % usado
-        row_cells[5].text = f"Intensidad: {row_data['Intensidad_Real']}" 
+        row_cells[5].text = f"Int: {row_data['Intensidad_Real']}" 
 
     doc.add_paragraph("\n")
 
@@ -220,7 +220,7 @@ elif isinstance(DB_EJERCICIOS, str):
     st.error(DB_EJERCICIOS)
     st.stop()
 
-# --- CONFIGURACIÓN DE LA SESIÓN (LÓGICA NUEVA) ---
+# --- CONFIGURACIÓN DE LA SESIÓN ---
 col1, col2 = st.columns(2)
 with col1:
     alumno = st.text_input("Nombre del Alumno:", "")
@@ -228,58 +228,54 @@ with col1:
     sel_tipos = st.multiselect("Material:", options=tipos, default=tipos)
 
 with col2:
-    # SELECCIÓN DE OBJETIVO Y PARÁMETROS CIENTÍFICOS
     objetivo = st.selectbox("Objetivo:", ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"])
     
-    # Variables de salida de esta sección
-    intensidad_seleccionada = 0  # Entero (ej: 85)
-    reps_seleccionadas = ""      # String (ej: "6")
-    descanso_seleccionado = ""   # String (ej: "3 min")
+    # Variables a rellenar
+    intensidad_seleccionada = 0
+    reps_seleccionadas = ""
+    descanso_seleccionado = ""
     
+    # 1. HIPERTROFIA (1-6 REPS)
     if objetivo == "Hipertrofia Muscular":
         st.info("Rango: 1-6 Reps | Intensidad ≥ 85%")
-        col_h1, col_h2 = st.columns(2)
+        col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100])
         with col_h2:
+            # Selector específico 1-6
+            val_reps = st.selectbox("Repeticiones:", [1, 2, 3, 4, 5, 6])
+            reps_seleccionadas = str(val_reps)
+        with col_h3:
             descanso_seleccionado = st.selectbox("Descanso:", ["3 min", "4 min", "5 min"])
-        
-        # CÁLCULO AUTOMÁTICO DE REPS SEGÚN INTENSIDAD (Relación Inversa)
-        if intensidad_seleccionada == 100:
-            reps_seleccionadas = "1"
-        elif intensidad_seleccionada == 95:
-            reps_seleccionadas = "2"
-        elif intensidad_seleccionada == 90:
-            reps_seleccionadas = "3-4"
-        else: # 85
-            reps_seleccionadas = "5-6"
             
+    # 2. DEFINICIÓN (6-12 REPS)
     elif objetivo == "Definición Muscular":
         st.info("Rango: 6-12 Reps | Intensidad 60-85%")
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75, 80, 85])
         with col_d2:
-            val_reps = st.slider("Nº Repeticiones:", 6, 12, 10)
+            # Selector específico 6-12
+            val_reps = st.selectbox("Repeticiones:", [6, 7, 8, 9, 10, 11, 12])
             reps_seleccionadas = str(val_reps)
         with col_d3:
             descanso_seleccionado = st.selectbox("Descanso:", ["1 min", "2 min", "3 min"])
             
+    # 3. RESISTENCIA (13-20 REPS)
     elif objetivo == "Resistencia Muscular":
-        st.info("Rango: >13 Reps | Intensidad < 60%")
+        st.info("Rango: 13-20 Reps | Intensidad < 60%")
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 55, 50, 45, 40])
         with col_r2:
-            # Input numérico libre como pidió el usuario
-            val_reps = st.number_input("Nº Repeticiones:", min_value=13, max_value=100, value=15, step=1)
+            # Selector específico 13-20
+            val_reps = st.selectbox("Repeticiones:", [13, 14, 15, 16, 17, 18, 19, 20])
             reps_seleccionadas = str(val_reps)
         with col_r3:
-            # Generar lista de 60 a 0 bajando de 5 en 5
             opciones_segundos = [f"{s} seg" for s in range(60, -1, -5)]
             descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos)
 
-# Filtro de ejercicios
+# Filtro
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
     num_ej = st.slider("Cantidad de Ejercicios:", 1, min(10, len(ej_filtrados)), 6)
@@ -335,7 +331,6 @@ with col_gen:
         for item in seleccionados_data:
             rm = rm_inputs[item['nombre']]
             
-            # CÁLCULO CIENTÍFICO DE LA CARGA
             factor = intensidad_seleccionada / 100.0
             peso_real = int(rm * factor)
             
@@ -350,7 +345,6 @@ with col_gen:
             
         df = pd.DataFrame(rutina_export)
         
-        # TÍTULO DINÁMICO
         if len(sel_tipos) > 1:
             titulo_doc = "MIXTO"
         elif len(sel_tipos) == 1:
@@ -360,7 +354,7 @@ with col_gen:
             
         docx = generar_word_final(df, objetivo, alumno, titulo_doc, f"{intensidad_seleccionada}%")
         
-        st.success(f"Rutina generada: {objetivo} al {intensidad_seleccionada}%")
+        st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%)")
         st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 with col_reset:
