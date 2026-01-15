@@ -12,7 +12,7 @@ from io import BytesIO
 from datetime import datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Generador Rutinas Final", layout="wide")
+st.set_page_config(page_title="Entrenador Pro Científico", layout="wide")
 
 # --- ESTILOS WORD ---
 def set_cell_bg_color(cell, hex_color):
@@ -32,7 +32,7 @@ def style_header_cell(cell, text):
     run.font.color.rgb = RGBColor(255, 255, 255)
     set_cell_bg_color(cell, "2E4053")
 
-# --- BUSCADOR "RASTREADOR" DE IMÁGENES ---
+# --- BUSCADOR DE IMÁGENES ---
 def encontrar_imagen_recursiva(nombre_objetivo):
     if not nombre_objetivo or pd.isna(nombre_objetivo):
         return None, "Celda Vacía"
@@ -44,29 +44,23 @@ def encontrar_imagen_recursiva(nombre_objetivo):
         for filename in files:
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
                 filename_base = os.path.splitext(filename)[0].lower()
-                
                 if filename.lower() == nombre_limpio:
                     return os.path.join(root, filename), "Exacta"
-                
                 if filename_base == nombre_base_excel:
                     return os.path.join(root, filename), "Por Nombre"
-
     return None, f"No encontrado"
 
-# --- CARGAR EXCEL (AQUÍ ESTABA EL ERROR) ---
+# --- CARGAR EXCEL ---
 @st.cache_data
 def cargar_ejercicios():
     try:
         if os.path.exists("DB_EJERCICIOS.xlsx"):
             df = pd.read_excel("DB_EJERCICIOS.xlsx")
             df.columns = df.columns.str.strip().str.lower()
-            
             if 'nombre' not in df.columns:
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
-            
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
-            
             df = df.fillna("")
             return df.to_dict('records')
         else:
@@ -76,14 +70,8 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- LÓGICA PARAMETROS ---
-def obtener_parametros(objetivo):
-    if objetivo == "Hipertrofia": return {"reps": "8-12", "descanso": "90 seg"}
-    elif objetivo == "Fuerza Máxima": return {"reps": "3-5", "descanso": "3-5 min"}
-    elif objetivo == "Resistencia": return {"reps": "15-20", "descanso": "45 seg"}
-
 # --- GENERADOR WORD ---
-def generar_word_final(rutina_df, objetivo, alumno, titulo_material):
+def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
     doc = Document()
     
     # Configuración Página
@@ -104,14 +92,14 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material):
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
-    
-    r1 = p.add_run(f"PROGRAMA DE ENTRAMIENTO DE: {titulo_material.upper()}\n")
+    r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
     r1.font.size = Pt(16)
     r1.font.color.rgb = RGBColor(41, 128, 185)
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
-    p.add_run(f"OBJETIVO: {objetivo} | ALUMNO: {nombre_mostrar.upper()}")
+    # Añadimos la intensidad seleccionada al encabezado
+    p.add_run(f"OBJETIVO: {objetivo} ({intensidad_str}) | ALUMNO: {nombre_mostrar.upper()}")
 
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
@@ -122,7 +110,6 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material):
 
     # 1. GUÍA VISUAL
     doc.add_heading('1. Guía Visual de Ejercicios', level=2)
-    
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -172,7 +159,8 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material):
         row_cells[2].text = f"4 x {row_data['Reps']}"
         row_cells[3].text = str(row_data['Peso'])
         row_cells[4].text = row_data['Descanso']
-        row_cells[5].text = ""
+        # En notas ponemos el % usado
+        row_cells[5].text = f"Intensidad: {row_data['Intensidad_Real']}" 
 
     doc.add_paragraph("\n")
 
@@ -210,47 +198,99 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material):
     return buffer
 
 # --- INTERFAZ STREAMLIT ---
-st.title("🏋️ Generador de Programas de Entrenamiento")
+st.title("🏋️ Generador Científico de Rutinas")
 
 # Diagnóstico Sidebar
-st.sidebar.markdown("### 📂 Estado de Imágenes")
+st.sidebar.markdown("### 📂 Estado")
 imagenes_encontradas = []
 for root, dirs, files in os.walk("."):
     for file in files:
         if file.lower().endswith(('.png', '.jpg', '.jpeg')):
             imagenes_encontradas.append(file)
-
 if imagenes_encontradas:
-    st.sidebar.success(f"✅ {len(imagenes_encontradas)} imágenes listas.")
+    st.sidebar.success(f"✅ {len(imagenes_encontradas)} imágenes detectadas.")
 else:
-    st.sidebar.error("❌ No se detectan imágenes en GitHub.")
+    st.sidebar.error("❌ No hay imágenes en GitHub.")
 
 # Carga DB
 if DB_EJERCICIOS is None:
-    st.error("Sube DB_EJERCICIOS.xlsx")
+    st.error("Error: DB_EJERCICIOS.xlsx no encontrado.")
     st.stop()
 elif isinstance(DB_EJERCICIOS, str):
     st.error(DB_EJERCICIOS)
     st.stop()
 
+# --- CONFIGURACIÓN DE LA SESIÓN (LÓGICA NUEVA) ---
 col1, col2 = st.columns(2)
 with col1:
-    alumno = st.text_input("Nombre del Alumno (opcional):", "")
-    
+    alumno = st.text_input("Nombre del Alumno:", "")
     tipos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
-    sel_tipos = st.multiselect("Seleccionar Material:", options=tipos, default=tipos)
+    sel_tipos = st.multiselect("Material:", options=tipos, default=tipos)
+
 with col2:
-    objetivo = st.selectbox("Objetivo", ["Hipertrofia", "Fuerza Máxima", "Resistencia"])
-    if sel_tipos:
-        ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
-        num_ej = st.slider("Nº Ejercicios", 1, min(10, len(ej_filtrados)), 6)
-    else:
-        st.stop()
+    # SELECCIÓN DE OBJETIVO Y PARÁMETROS CIENTÍFICOS
+    objetivo = st.selectbox("Objetivo:", ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"])
+    
+    # Variables de salida de esta sección
+    intensidad_seleccionada = 0  # Entero (ej: 85)
+    reps_seleccionadas = ""      # String (ej: "6")
+    descanso_seleccionado = ""   # String (ej: "3 min")
+    
+    if objetivo == "Hipertrofia Muscular":
+        st.info("Rango: 1-6 Reps | Intensidad ≥ 85%")
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100])
+        with col_h2:
+            descanso_seleccionado = st.selectbox("Descanso:", ["3 min", "4 min", "5 min"])
+        
+        # CÁLCULO AUTOMÁTICO DE REPS SEGÚN INTENSIDAD (Relación Inversa)
+        if intensidad_seleccionada == 100:
+            reps_seleccionadas = "1"
+        elif intensidad_seleccionada == 95:
+            reps_seleccionadas = "2"
+        elif intensidad_seleccionada == 90:
+            reps_seleccionadas = "3-4"
+        else: # 85
+            reps_seleccionadas = "5-6"
+            
+    elif objetivo == "Definición Muscular":
+        st.info("Rango: 6-12 Reps | Intensidad 60-85%")
+        col_d1, col_d2, col_d3 = st.columns(3)
+        with col_d1:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75, 80, 85])
+        with col_d2:
+            val_reps = st.slider("Nº Repeticiones:", 6, 12, 10)
+            reps_seleccionadas = str(val_reps)
+        with col_d3:
+            descanso_seleccionado = st.selectbox("Descanso:", ["1 min", "2 min", "3 min"])
+            
+    elif objetivo == "Resistencia Muscular":
+        st.info("Rango: >13 Reps | Intensidad < 60%")
+        col_r1, col_r2, col_r3 = st.columns(3)
+        with col_r1:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 55, 50, 45, 40])
+        with col_r2:
+            # Input numérico libre como pidió el usuario
+            val_reps = st.number_input("Nº Repeticiones:", min_value=13, max_value=100, value=15, step=1)
+            reps_seleccionadas = str(val_reps)
+        with col_r3:
+            # Generar lista de 60 a 0 bajando de 5 en 5
+            opciones_segundos = [f"{s} seg" for s in range(60, -1, -5)]
+            descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos)
+
+# Filtro de ejercicios
+if sel_tipos:
+    ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
+    num_ej = st.slider("Cantidad de Ejercicios:", 1, min(10, len(ej_filtrados)), 6)
+else:
+    st.warning("Selecciona material.")
+    st.stop()
 
 # Selección
-st.subheader(f"Selección de ejercicios")
+st.subheader("Selección de Ejercicios")
 nombres_fil = [e['nombre'] for e in ej_filtrados]
-seleccion = st.multiselect("Ejercicios específicos:", nombres_fil, max_selections=num_ej)
+seleccion = st.multiselect("Elige:", nombres_fil, max_selections=num_ej)
 
 seleccionados_data = []
 nombres_finales = seleccion.copy()
@@ -265,7 +305,8 @@ for nom in nombres_finales:
     seleccionados_data.append(next(x for x in ej_filtrados if x['nombre'] == nom))
 
 # Visor previo
-st.info("👇 **Vista previa de imágenes encontradas:**")
+st.markdown("---")
+st.caption("Vista previa de imágenes:")
 cols_prev = st.columns(6)
 for i, item in enumerate(seleccionados_data):
     with cols_prev[i % 6]:
@@ -276,36 +317,40 @@ for i, item in enumerate(seleccionados_data):
             st.error(f"❌ {item['imagen']}")
 
 # Inputs RM
-st.markdown("---")
+st.subheader("Cargas de Entrenamiento")
+st.write(f"Introduce el 1RM actual. Se calculará el **{intensidad_seleccionada}%** automáticamente.")
 cols = st.columns(3)
 rm_inputs = {}
 for i, ej in enumerate(seleccionados_data):
     with cols[i%3]:
-        rm_inputs[ej['nombre']] = st.number_input(f"RM {ej['nombre']}", value=50, step=5)
+        rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5)
 
 # --- BOTONES DE ACCIÓN ---
 col_gen, col_reset = st.columns([3, 1])
 
 with col_gen:
-    if st.button("📄 GENERAR DOCUMENTO WORD", type="primary", use_container_width=True):
-        params = obtener_parametros(objetivo)
+    if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True):
         rutina_export = []
         
         for item in seleccionados_data:
             rm = rm_inputs[item['nombre']]
-            factor = 0.75 if objetivo == "Hipertrofia" else (0.90 if objetivo == "Fuerza Máxima" else 0.50)
-            peso = int(rm * factor)
+            
+            # CÁLCULO CIENTÍFICO DE LA CARGA
+            factor = intensidad_seleccionada / 100.0
+            peso_real = int(rm * factor)
             
             rutina_export.append({
                 "Ejercicio": item['nombre'],
                 "Imagen": item['imagen'],
-                "Reps": params['reps'],
-                "Peso": peso,
-                "Descanso": params['descanso']
+                "Reps": reps_seleccionadas,
+                "Peso": peso_real,
+                "Descanso": descanso_seleccionado,
+                "Intensidad_Real": f"{intensidad_seleccionada}%"
             })
             
         df = pd.DataFrame(rutina_export)
         
+        # TÍTULO DINÁMICO
         if len(sel_tipos) > 1:
             titulo_doc = "MIXTO"
         elif len(sel_tipos) == 1:
@@ -313,12 +358,12 @@ with col_gen:
         else:
             titulo_doc = "GENERAL"
             
-        docx = generar_word_final(df, objetivo, alumno, titulo_doc)
+        docx = generar_word_final(df, objetivo, alumno, titulo_doc, f"{intensidad_seleccionada}%")
         
-        st.success("¡Documento creado con éxito!")
+        st.success(f"Rutina generada: {objetivo} al {intensidad_seleccionada}%")
         st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 with col_reset:
     st.write("")
-    if st.button("🔄 Generar Nueva Rutina", use_container_width=True):
+    if st.button("🔄 Reiniciar", use_container_width=True):
         st.rerun()
