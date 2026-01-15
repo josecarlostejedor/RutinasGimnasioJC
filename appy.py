@@ -3,269 +3,302 @@ import pandas as pd
 import random
 import os
 from docx import Document
-from docx.shared import Inches, Pt, Cm
+from docx.shared import Inches, Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.section import WD_ORIENT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from io import BytesIO
 from datetime import datetime
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Generador de Rutinas Pro", layout="wide")
+st.set_page_config(page_title="Entrenador Pro v2", layout="wide")
 
-# --- CARGAR BASE DE DATOS ROBUSTA ---
+# --- FUNCIONES AUXILIARES WORD (ESTILOS Y COLORES) ---
+def set_cell_bg_color(cell, hex_color):
+    """Pinta el fondo de una celda de Word con un color HEX"""
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), hex_color)
+    tcPr.append(shd)
+
+def style_header_cell(cell, text):
+    cell.text = text
+    p = cell.paragraphs[0]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.runs[0]
+    run.font.bold = True
+    run.font.color.rgb = RGBColor(255, 255, 255) # Texto blanco
+    set_cell_bg_color(cell, "2E4053") # Fondo gris oscuro profesional
+
+# --- CARGAR BASE DE DATOS ---
 @st.cache_data
 def cargar_ejercicios():
     try:
         if os.path.exists("DB_EJERCICIOS.xlsx"):
             df = pd.read_excel("DB_EJERCICIOS.xlsx")
-            
-            # 1. Limpiar nombres de columnas (quitar espacios y poner minúsculas)
             df.columns = df.columns.str.strip().str.lower()
             
-            # 2. Verificar columnas obligatorias
+            # Normalización de columnas
             if 'nombre' not in df.columns:
-                # Intentar arreglar si se llama 'ejercicio'
-                if 'ejercicio' in df.columns:
-                    df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
-                else:
-                    return f"Error: Falta la columna 'nombre' en el Excel. Columnas encontradas: {list(df.columns)}"
+                if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
             
-            # 3. Rellenar columnas opcionales si faltan
-            if 'tipo' not in df.columns:
-                df['tipo'] = "General" # Valor por defecto si no existe la columna
-            if 'imagen' not in df.columns:
-                df['imagen'] = ""
-            if 'desc' not in df.columns:
-                df['desc'] = ""
-
-            # Limpiar datos
-            df['tipo'] = df['tipo'].fillna("General").astype(str)
-            df['imagen'] = df['imagen'].fillna("").astype(str)
+            campos_opcionales = ['tipo', 'imagen', 'desc']
+            for campo in campos_opcionales:
+                if campo not in df.columns: df[campo] = ""
             
+            # Rellenar vacíos
+            df = df.fillna("")
             return df.to_dict('records')
         else:
             return None
     except Exception as e:
-        return f"Error crítico leyendo Excel: {str(e)}"
+        return f"Error: {str(e)}"
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- LÓGICA DE OBJETIVOS ---
+# --- LÓGICA DE PARAMETROS ---
 def obtener_parametros(objetivo):
     if objetivo == "Hipertrofia":
-        return {"reps": "6-12", "int_min": 0.60, "int_max": 0.85, "descanso": "1-3 min"}
+        return {"reps": "8-12", "descanso": "90 seg", "notas": "Controlar excéntrica"}
     elif objetivo == "Fuerza Máxima":
-        return {"reps": "1-5", "int_min": 0.85, "int_max": 0.95, "descanso": "3-5 min"}
+        return {"reps": "3-5", "descanso": "3-5 min", "notas": "Explosivo concéntrico"}
     elif objetivo == "Resistencia":
-        return {"reps": "15-20", "int_min": 0.40, "int_max": 0.60, "descanso": "30-60 s"}
+        return {"reps": "15-20", "descanso": "45 seg", "notas": "Ritmo constante"}
 
-# --- GENERADOR WORD CON IMÁGENES ---
-def generar_word(rutina_df, objetivo, alumno, tipo_rutina):
+# --- GENERADOR DE WORD PRO ---
+def generar_word_pro(rutina_df, objetivo, alumno, tipo_rutina):
     doc = Document()
     
-    # Configurar página Horizontal
+    # 1. Configuración Página (Vertical suele ser mejor para lista larga, pero mantenemos Horizontal para layout visual)
     section = doc.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
     section.page_width = Inches(11.69)
     section.page_height = Inches(8.27)
-    section.left_margin = Cm(1.27)
-    section.right_margin = Cm(1.27)
-    section.top_margin = Cm(1.27)
-    section.bottom_margin = Cm(1.27)
+    section.top_margin = Cm(1.5)
+    section.bottom_margin = Cm(1.5)
+    section.left_margin = Cm(1.5)
+    section.right_margin = Cm(1.5)
 
-    # Encabezado
-    header = doc.add_table(rows=1, cols=3)
-    header.autofit = False
-    header.columns[0].width = Inches(4)
-    header.columns[2].width = Inches(2.5)
+    # 2. Encabezado Profesional
+    head_tbl = doc.add_table(rows=1, cols=2)
+    head_tbl.autofit = False
+    head_tbl.columns[0].width = Inches(8)
+    head_tbl.columns[1].width = Inches(3)
     
-    header.cell(0,0).text = f"RUTINA: {tipo_rutina.upper()}"
-    header.cell(0,1).text = f"OBJETIVO: {objetivo.upper()}"
-    c3 = header.cell(0,2)
-    c3.text = f"Fecha: {datetime.now().strftime('%d/%m/%Y')}\nIES / CLUB"
-    c3.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    # Celda Izq: Título
+    c1 = head_tbl.cell(0,0)
+    p = c1.paragraphs[0]
+    r1 = p.add_run(f"PROGRAMA: {tipo_rutina.upper()}\n")
+    r1.font.bold = True
+    r1.font.size = Pt(16)
+    r1.font.color.rgb = RGBColor(41, 128, 185) # Azul bonito
+    p.add_run(f"OBJETIVO: {objetivo} | ALUMNO: {alumno}")
 
-    doc.add_paragraph(f"Alumno/a: {alumno}")
-    doc.add_paragraph("_" * 115)
+    # Celda Der: Fecha
+    c2 = head_tbl.cell(0,1)
+    p2 = c2.paragraphs[0]
+    p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p2.add_run(f"FECHA: {datetime.now().strftime('%d/%m/%Y')}\n").bold = True
+    p2.add_run("Entrenamiento Funcional")
 
-    # Estructura Principal
-    main_table = doc.add_table(rows=1, cols=2)
-    main_table.autofit = False
-    main_table.columns[0].width = Inches(5.5)
-    main_table.columns[1].width = Inches(5.0)
+    doc.add_paragraph("_" * 90)
 
-    # --- IZQUIERDA: IMÁGENES ---
-    left_cell = main_table.cell(0,0)
-    rows_needed = (len(rutina_df) + 1) // 2
-    visual_table = left_cell.add_table(rows=rows_needed, cols=2)
-    visual_table.style = 'Table Grid'
+    # 3. SECCIÓN 1: GALERÍA VISUAL (Arriba)
+    doc.add_heading('1. Guía Visual de Ejercicios', level=2)
     
-    for idx, row_data in rutina_df.iterrows():
-        r = idx // 2
-        c = idx % 2
-        cell = visual_table.cell(r, c)
+    # Calculamos filas necesarias para 4 columnas
+    num_ej = len(rutina_df)
+    cols_visual = 4 
+    rows_visual = (num_ej + cols_visual - 1) // cols_visual
+    
+    vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
+    vis_table.style = 'Table Grid'
+    vis_table.autofit = False
+    
+    # Ajustar ancho de columnas visuales
+    for col in vis_table.columns:
+        col.width = Inches(2.5)
+
+    for i, row_data in enumerate(rutina_df.to_dict('records')):
+        r = i // cols_visual
+        c = i % cols_visual
+        cell = vis_table.cell(r, c)
+        
+        # Párrafo centrado
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Intentar insertar imagen
+        # Insertar Imagen
         img_name = str(row_data['Imagen']).strip()
         img_path = os.path.join("images", img_name)
         
         if img_name and os.path.exists(img_path):
             try:
                 run = p.add_run()
-                run.add_picture(img_path, width=Inches(1.8))
+                run.add_picture(img_path, width=Inches(1.8), height=Inches(1.5))
                 p.add_run("\n")
             except:
-                p.add_run("[Error img]\n")
+                p.add_run("⚠️ Error Fichero\n")
         else:
+            # Placeholder bonito si falla
             p.add_run("\n[FOTO]\n")
-
-        run_txt = p.add_run(row_data['Ejercicio'])
-        run_txt.font.bold = True
-        run_txt.font.size = Pt(9)
-
-    # --- DERECHA: DATOS ---
-    right_cell = main_table.cell(0,1)
-    reg_table = right_cell.add_table(rows=1, cols=3)
-    reg_table.style = 'Table Grid'
-    
-    hdr = reg_table.rows[0].cells
-    hdr[0].text = "Ejercicio"
-    hdr[1].text = "Series/Reps"
-    hdr[2].text = "Kg"
-    
-    for idx, row_data in rutina_df.iterrows():
-        row = reg_table.add_row().cells
-        row[0].text = f"{idx+1}. {row_data['Ejercicio']} ({row_data['Tipo']})"
-        row[1].text = f"{row_data['Series']} x {row_data['Reps']}"
-        row[2].text = str(row_data['Peso'])
         
-        row_d = reg_table.add_row().cells
-        m = row_d[0].merge(row_d[2])
-        m.text = f"Descanso: {row_data['Descanso']} | Notas: _________________"
-        m.paragraphs[0].runs[0].font.size = Pt(8)
+        # Nombre ejercicio
+        run_nom = p.add_run(row_data['Ejercicio'])
+        run_nom.font.bold = True
+        run_nom.font.size = Pt(10)
 
-    # Footer
-    doc.add_paragraph("\n")
-    footer = doc.add_table(rows=1, cols=1)
-    footer.style = 'Table Grid'
-    footer.cell(0,0).text = "Escala de Borg: 6-7 (Muy ligero) | 12-13 (Algo duro) | 18-20 (Agotamiento)"
+    doc.add_paragraph("\n") # Espacio
+
+    # 4. SECCIÓN 2: TABLA TÉCNICA (Abajo)
+    doc.add_heading('2. Rutina Detallada', level=2)
     
+    tech_table = doc.add_table(rows=1, cols=6)
+    tech_table.style = 'Table Grid'
+    
+    # Encabezados
+    headers = ["#", "Ejercicio", "Series x Reps", "Carga (Kg)", "Descanso", "Notas"]
+    for i, h in enumerate(headers):
+        style_header_cell(tech_table.rows[0].cells[i], h)
+        
+    for idx, row_data in rutina_df.iterrows():
+        row_cells = tech_table.add_row().cells
+        row_cells[0].text = str(idx + 1)
+        row_cells[1].text = row_data['Ejercicio']
+        row_cells[2].text = f"4 x {row_data['Reps']}"
+        row_cells[3].text = str(row_data['Peso'])
+        row_cells[4].text = row_data['Descanso']
+        row_cells[5].text = "" # Espacio para escribir a mano
+
+    doc.add_paragraph("\n")
+
+    # 5. SECCIÓN 3: ESCALA DE BORG VISUAL (Bonita)
+    doc.add_heading('3. Percepción de Esfuerzo (RPE)', level=3)
+    
+    borg_table = doc.add_table(rows=2, cols=5)
+    borg_table.style = 'Table Grid'
+    borg_table.autofit = True
+    
+    # Definición de la escala visual
+    borg_data = [
+        {"val": "6-8", "txt": "Muy Ligero", "icon": "🙂", "color": "A9DFBF"}, # Verde claro
+        {"val": "9-11", "txt": "Ligero", "icon": "😌", "color": "D4EFDF"},    # Verde muy claro
+        {"val": "12-14", "txt": "Algo Duro", "icon": "😐", "color": "F9E79F"}, # Amarillo
+        {"val": "15-17", "txt": "Duro", "icon": "😓", "color": "F5CBA7"},    # Naranja
+        {"val": "18-20", "txt": "Máximo", "icon": "🥵", "color": "E6B0AA"}    # Rojo claro
+    ]
+    
+    # Rellenar tabla Borg
+    row_icons = borg_table.rows[0]
+    row_text = borg_table.rows[1]
+    
+    for i, data in enumerate(borg_data):
+        # Icono y Valor
+        c1 = row_icons.cells[i]
+        p1 = c1.paragraphs[0]
+        p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run1 = p1.add_run(f"{data['icon']}\n{data['val']}")
+        run1.font.size = Pt(14)
+        set_cell_bg_color(c1, data['color'])
+        
+        # Texto descriptivo
+        c2 = row_text.cells[i]
+        p2 = c2.paragraphs[0]
+        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p2.add_run(data['txt']).font.bold = True
+        set_cell_bg_color(c2, data['color'])
+
+    # Guardar
     buffer = BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
-# --- INTERFAZ DE USUARIO ---
-st.title("🏋️ Generador de Rutinas por Material")
+# --- INTERFAZ STREAMLIT ---
+st.title("🏋️ Generador de Rutinas V2 (Layout Vertical)")
 
-# Validaciones iniciales
+# --- DEBUGGER DE IMÁGENES ---
+# Esto te ayudará a saber si las imágenes están bien subidas
+with st.expander("🛠️ Diagnóstico de Imágenes (Abrir si salen errores)"):
+    if os.path.exists("images"):
+        archivos = os.listdir("images")
+        st.write(f"✅ Carpeta 'images' encontrada. Contiene {len(archivos)} archivos:")
+        st.write(archivos)
+    else:
+        st.error("❌ NO existe la carpeta 'images' en el repositorio. Crea la carpeta y sube las fotos.")
+
+# --- VALIDACIÓN EXCEL ---
 if DB_EJERCICIOS is None:
-    st.error("No se encuentra el archivo 'DB_EJERCICIOS.xlsx'. Súbelo al repositorio.")
+    st.error("Sube el archivo DB_EJERCICIOS.xlsx")
     st.stop()
 elif isinstance(DB_EJERCICIOS, str):
-    st.error(DB_EJERCICIOS) # Muestra el error detallado de columnas
+    st.error(DB_EJERCICIOS)
     st.stop()
 
-# --- SIDEBAR: FILTROS ---
-st.sidebar.header("Configuración de Rutina")
-alumno = st.sidebar.text_input("Nombre Alumno:", "Atleta")
+# --- SIDEBAR ---
+st.sidebar.header("Datos Sesión")
+alumno = st.sidebar.text_input("Alumno:", "Atleta")
 objetivo = st.sidebar.selectbox("Objetivo", ["Hipertrofia", "Fuerza Máxima", "Resistencia"])
 
-# 1. Obtener tipos únicos del Excel para el filtro
-tipos_disponibles = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS])))
+# Filtro Material
+tipos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
+sel_tipos = st.sidebar.multiselect("Material:", options=tipos, default=tipos)
 
-# 2. Selector de Tipo
-tipos_seleccionados = st.sidebar.multiselect(
-    "Selecciona Material / Tipo:",
-    options=tipos_disponibles,
-    default=tipos_disponibles # Por defecto selecciona todos
-)
+if not sel_tipos: st.stop()
 
-# 3. Filtrar la base de datos según selección
-if not tipos_seleccionados:
-    st.warning("Selecciona al menos un tipo de material.")
-    st.stop()
+ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
+num_ej = st.sidebar.slider("Nº Ejercicios", 1, min(10, len(ej_filtrados)), 6)
 
-ejercicios_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in tipos_seleccionados]
-num_disponibles = len(ejercicios_filtrados)
+# Selección
+st.subheader(f"Selección ({', '.join(sel_tipos)})")
+nombres_fil = [e['nombre'] for e in ej_filtrados]
+seleccion = st.multiselect("Ejercicios:", nombres_fil, max_selections=num_ej)
 
-if num_disponibles == 0:
-    st.warning("No hay ejercicios que coincidan con ese filtro.")
-    st.stop()
+# Relleno auto
+seleccionados_data = []
+nombres_finales = seleccion.copy()
+if len(nombres_finales) < num_ej:
+    pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
+    needed = num_ej - len(nombres_finales)
+    if needed <= len(pool):
+        extras = random.sample(pool, needed)
+        nombres_finales.extend([x['nombre'] for x in extras])
+        
+for nom in nombres_finales:
+    seleccionados_data.append(next(x for x in ej_filtrados if x['nombre'] == nom))
 
-st.sidebar.markdown(f"**Ejercicios disponibles:** {num_disponibles}")
-
-# 4. Slider dinámico
-num_ej = st.sidebar.slider("Nº Ejercicios", 1, min(10, num_disponibles), min(6, num_disponibles))
-
-# --- ÁREA PRINCIPAL ---
-st.subheader(f"Selección de Ejercicios ({', '.join(tipos_seleccionados)})")
-
-lista_nombres_filtrados = [e['nombre'] for e in ejercicios_filtrados]
-seleccion = st.multiselect("Elige ejercicios específicos:", lista_nombres_filtrados, max_selections=num_ej)
-
-# Lógica de relleno automático
-ejercicios_finales_data = []
-nombres_elegidos = seleccion.copy()
-
-if len(nombres_elegidos) < num_ej:
-    restantes = [e for e in ejercicios_filtrados if e['nombre'] not in nombres_elegidos]
-    faltan = num_ej - len(nombres_elegidos)
-    if faltan > 0:
-        extra = random.sample(restantes, faltan)
-        nombres_elegidos.extend([e['nombre'] for e in extra])
-
-# Recuperar datos completos
-for nombre in nombres_elegidos:
-    # Buscamos en la lista filtrada
-    item = next(x for x in ejercicios_filtrados if x['nombre'] == nombre)
-    ejercicios_finales_data.append(item)
-
-# Inputs de RM
+# Inputs Cargas
 st.markdown("---")
-st.subheader("Cargas (RM)")
 cols = st.columns(3)
-inputs_rm = {}
+rm_inputs = {}
+for i, ej in enumerate(seleccionados_data):
+    with cols[i%3]:
+        rm_inputs[ej['nombre']] = st.number_input(f"RM {ej['nombre']}", value=50, step=5)
 
-for i, item in enumerate(ejercicios_finales_data):
-    with cols[i % 3]:
-        # Mostramos también el tipo para guiar al usuario
-        label = f"{item['nombre']} ({item['tipo']})"
-        inputs_rm[item['nombre']] = st.number_input(f"RM {label}", value=50, step=5, key=item['nombre'])
-
-# Botón Generar
-if st.button("Generar PDF (Word)"):
+if st.button("Generar Word Profesional"):
     params = obtener_parametros(objetivo)
     rutina_export = []
     
-    for item in ejercicios_finales_data:
-        rm = inputs_rm[item['nombre']]
-        intensidad = random.uniform(params['int_min'], params['int_max'])
-        peso = round(rm * intensidad)
+    for item in seleccionados_data:
+        rm = rm_inputs[item['nombre']]
+        # Lógica de peso
+        factor = 0.75 if objetivo == "Hipertrofia" else (0.90 if objetivo == "Fuerza Máxima" else 0.50)
+        peso = int(rm * factor)
         
         rutina_export.append({
             "Ejercicio": item['nombre'],
-            "Tipo": item['tipo'],
             "Imagen": item['imagen'],
-            "Series": 4,
             "Reps": params['reps'],
             "Peso": peso,
             "Descanso": params['descanso']
         })
         
-    df_export = pd.DataFrame(rutina_export)
+    df = pd.DataFrame(rutina_export)
     
-    # Texto para el título del Word (ej: "Multipower + TRX")
-    titulo_rutina = " + ".join(tipos_seleccionados) if len(tipos_seleccionados) < 3 else "MIXTA"
+    docx = generar_word_pro(df, objetivo, alumno, " + ".join(sel_tipos))
     
-    docx = generar_word(df_export, objetivo, alumno, titulo_rutina)
-    
-    st.success("¡Rutina generada!")
-    st.download_button(
-        "📥 Descargar Word", 
-        docx, 
-        f"rutina_{alumno}_{datetime.now().strftime('%Y%m%d')}.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+    st.success("Documento generado. Revisa la sección de descargas.")
+    st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
