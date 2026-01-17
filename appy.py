@@ -6,7 +6,7 @@ from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.section import WD_ORIENT
-from docx.oxml import OxmlElement
+from docx.oxml import OxmlElement, ns
 from docx.oxml.ns import qn
 from io import BytesIO
 from datetime import datetime
@@ -14,7 +14,30 @@ from datetime import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Entrenador Pro Científico", layout="wide")
 
-# --- ESTILOS WORD ---
+# --- FUNCIONES AUXILIARES PARA WORD ---
+
+def create_element(name):
+    return OxmlElement(name)
+
+def create_attribute(element, name, value):
+    element.set(ns.qn(name), value)
+
+def add_page_number(run):
+    """Agrega el campo dinámico de número de página"""
+    fldChar1 = create_element('w:fldChar')
+    create_attribute(fldChar1, 'w:fldCharType', 'begin')
+
+    instrText = create_element('w:instrText')
+    create_attribute(instrText, 'xml:space', 'preserve')
+    instrText.text = "PAGE"
+
+    fldChar2 = create_element('w:fldChar')
+    create_attribute(fldChar2, 'w:fldCharType', 'end')
+
+    run._r.append(fldChar1)
+    run._r.append(instrText)
+    run._r.append(fldChar2)
+
 def set_cell_bg_color(cell, hex_color):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement('w:shd')
@@ -23,8 +46,10 @@ def set_cell_bg_color(cell, hex_color):
     shd.set(qn('w:fill'), hex_color)
     tcPr.append(shd)
 
-def style_header_cell(cell, text):
+def style_header_cell(cell, text, width_inches=None):
     cell.text = text
+    if width_inches:
+        cell.width = Inches(width_inches)
     p = cell.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.runs[0]
@@ -70,11 +95,11 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD ---
+# --- GENERADOR WORD (RENOVADO) ---
 def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
     doc = Document()
     
-    # Configuración Página
+    # 1. Configuración Página A4 Horizontal
     section = doc.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
     section.page_width = Inches(11.69)
@@ -84,7 +109,17 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     section.left_margin = Cm(1.27)
     section.right_margin = Cm(1.27)
 
-    # Encabezado
+    # --- PIE DE PÁGINA (FOOTER) ---
+    footer = section.footer
+    p_foot = footer.paragraphs[0]
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_foot = p_foot.add_run("Programa creado por Jose Carlos Tejedor. Página ")
+    run_foot.font.size = Pt(9)
+    add_page_number(run_foot) # Inserta número de página automático
+
+    # ================= PÁGINA 1: PORTADA VISUAL =================
+
+    # Encabezado Principal
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
     head_tbl.columns[0].width = Inches(8)
@@ -92,24 +127,36 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
-    r1 = p.add_run(f"PROGRAMA DE ENTRAMIENTO DE: {titulo_material.upper()}\n")
+    r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
     r1.font.size = Pt(16)
     r1.font.color.rgb = RGBColor(41, 128, 185)
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
-    # Añadimos la intensidad seleccionada al encabezado
     p.add_run(f"OBJETIVO: {objetivo} ({intensidad_str}) | ALUMNO: {nombre_mostrar.upper()}")
 
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p2.add_run(f"FECHA: {datetime.now().strftime('%d/%m/%Y')}\n").bold = True
-    p2.add_run("Entrenamiento Funcional")
+    
+    # Subtítulo Situación de Aprendizaje
+    p_sub = doc.add_paragraph()
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_sub = p_sub.add_run("Situación de Aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano")
+    run_sub.font.bold = True
+    run_sub.font.italic = True
+    run_sub.font.size = Pt(11)
+
     doc.add_paragraph("_" * 95)
 
-    # 1. GUÍA VISUAL
-    doc.add_heading('1. Guía Visual de Ejercicios', level=2)
+    # Título Sección 1 (Grande)
+    h1 = doc.add_heading(level=1)
+    run_h1 = h1.add_run('1. Guía Visual de Ejercicios')
+    run_h1.font.size = Pt(18) # Letra más grande
+    run_h1.font.color.rgb = RGBColor(44, 62, 80)
+
+    # Grid de Imágenes
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -134,39 +181,64 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
             except Exception:
                 p.add_run(f"[Error Fichero]\n")
         else:
-            p.add_run(f"\n[FALTA FOTO]\n")
+            p.add_run(f"\n[FOTO NO DISPONIBLE]\n")
             
         run_nom = p.add_run(row_data['Ejercicio'])
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
-    doc.add_paragraph("\n")
+    # SALTO DE PÁGINA OBLIGATORIO
+    doc.add_page_break()
 
-    # 2. TABLA TÉCNICA
-    doc.add_heading('2. Rutina Detallada', level=2)
+    # ================= PÁGINA 2: RUTINA DETALLADA =================
+
+    # Título Sección 2 (Grande)
+    h2 = doc.add_heading(level=1)
+    run_h2 = h2.add_run('2. Rutina Detallada')
+    run_h2.font.size = Pt(18)
+    run_h2.font.color.rgb = RGBColor(44, 62, 80)
+
+    # Tabla Técnica con anchos personalizados
     tech_table = doc.add_table(rows=1, cols=6)
     tech_table.style = 'Table Grid'
+    tech_table.autofit = False # Importante para que respete los anchos
     
-    headers = ["#", "Ejercicio", "Series x Reps", "Carga (Kg)", "Descanso", "Notas"]
+    # Definición de anchos (Suma total aprox 10.6 pulgadas)
+    widths = [0.7, 3.5, 1.5, 1.0, 1.5, 2.4] 
+    headers = ["Orden", "Ejercicio", "Series x Reps", "Carga", "Descanso", "Notas"]
     
+    # Configurar cabecera
+    row_hdr = tech_table.rows[0]
     for i, h in enumerate(headers):
-        style_header_cell(tech_table.rows[0].cells[i], h)
+        style_header_cell(row_hdr.cells[i], h, widths[i])
         
+    # Rellenar filas
     for idx, row_data in rutina_df.iterrows():
         row_cells = tech_table.add_row().cells
+        
+        # Aplicar anchos a las celdas de datos también
+        for i in range(6):
+            row_cells[i].width = Inches(widths[i])
+
         row_cells[0].text = str(idx + 1)
+        row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
         row_cells[1].text = row_data['Ejercicio']
         row_cells[2].text = f"4 x {row_data['Reps']}"
-        row_cells[3].text = str(row_data['Peso'])
+        row_cells[3].text = f"{row_data['Peso']} kg"
         row_cells[4].text = row_data['Descanso']
-        # En notas ponemos el % usado
         row_cells[5].text = f"Int: {row_data['Intensidad_Real']}" 
 
     doc.add_paragraph("\n")
 
-    # 3. BORG
-    doc.add_heading('3. Percepción de Esfuerzo (RPE)', level=3)
-    borg_table = doc.add_table(rows=2, cols=5)
+    # Título Sección 3 (Grande)
+    h3 = doc.add_heading(level=1)
+    run_h3 = h3.add_run('3. Percepción del Esfuerzo (RPE)')
+    run_h3.font.size = Pt(18)
+    run_h3.font.color.rgb = RGBColor(44, 62, 80)
+
+    # Tabla Borg
+    borg_table = doc.add_table(rows=3, cols=5) # 3 filas: Iconos, Texto, Casillas vacías
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
     
@@ -178,19 +250,44 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         {"val": "18-20", "txt": "Máximo", "icon": "🥵", "color": "E6B0AA"}
     ]
     
+    # Fila 1: Iconos y números
+    row_icons = borg_table.rows[0]
     for i, data in enumerate(borg_data):
-        c1 = borg_table.rows[0].cells[i]
-        p1 = c1.paragraphs[0]
-        p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run1 = p1.add_run(f"{data['icon']}\n{data['val']}")
-        run1.font.size = Pt(14)
-        set_cell_bg_color(c1, data['color'])
-        
-        c2 = borg_table.rows[1].cells[i]
-        p2 = c2.paragraphs[0]
-        p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p2.add_run(data['txt']).font.bold = True
-        set_cell_bg_color(c2, data['color'])
+        c = row_icons.cells[i]
+        p = c.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(f"{data['icon']}\n{data['val']}")
+        run.font.size = Pt(14)
+        set_cell_bg_color(c, data['color'])
+
+    # Fila 2: Texto descriptivo
+    row_text = borg_table.rows[1]
+    for i, data in enumerate(borg_data):
+        c = row_text.cells[i]
+        p = c.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.add_run(data['txt']).font.bold = True
+        set_cell_bg_color(c, data['color'])
+
+    # Fila 3: Casillas para marcar con X (Manteniendo color)
+    row_check = borg_table.rows[2]
+    # Hacer esta fila un poco más alta
+    tr = row_check._tr
+    trPr = tr.get_or_add_trPr()
+    trHeight = OxmlElement('w:trHeight')
+    trHeight.set(qn('w:val'), "600") # Altura en twips
+    trPr.append(trHeight)
+
+    for i, data in enumerate(borg_data):
+        c = row_check.cells[i]
+        p = c.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Dejamos vacío o ponemos un guion bajo sutil
+        set_cell_bg_color(c, data['color'])
+
+    # Añadir instrucción pequeña debajo
+    p_note = doc.add_paragraph("Marca con una X la sensación global al terminar el entrenamiento.")
+    p_note.style = "Caption"
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -230,52 +327,44 @@ with col1:
 with col2:
     objetivo = st.selectbox("Objetivo:", ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"])
     
-    # Variables a rellenar
     intensidad_seleccionada = 0
     reps_seleccionadas = ""
     descanso_seleccionado = ""
     
-    # 1. HIPERTROFIA (1-6 REPS)
     if objetivo == "Hipertrofia Muscular":
         st.info("Rango: 1-6 Reps | Intensidad ≥ 85%")
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100])
         with col_h2:
-            # Selector específico 1-6
             val_reps = st.selectbox("Repeticiones:", [1, 2, 3, 4, 5, 6])
             reps_seleccionadas = str(val_reps)
         with col_h3:
             descanso_seleccionado = st.selectbox("Descanso:", ["3 min", "4 min", "5 min"])
             
-    # 2. DEFINICIÓN (6-12 REPS)
     elif objetivo == "Definición Muscular":
         st.info("Rango: 6-12 Reps | Intensidad 60-85%")
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75, 80, 85])
         with col_d2:
-            # Selector específico 6-12
             val_reps = st.selectbox("Repeticiones:", [6, 7, 8, 9, 10, 11, 12])
             reps_seleccionadas = str(val_reps)
         with col_d3:
             descanso_seleccionado = st.selectbox("Descanso:", ["1 min", "2 min", "3 min"])
             
-    # 3. RESISTENCIA (13-20 REPS)
     elif objetivo == "Resistencia Muscular":
         st.info("Rango: 13-20 Reps | Intensidad < 60%")
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 55, 50, 45, 40])
         with col_r2:
-            # Selector específico 13-20
             val_reps = st.selectbox("Repeticiones:", [13, 14, 15, 16, 17, 18, 19, 20])
             reps_seleccionadas = str(val_reps)
         with col_r3:
             opciones_segundos = [f"{s} seg" for s in range(60, -1, -5)]
             descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos)
 
-# Filtro
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
     num_ej = st.slider("Cantidad de Ejercicios:", 1, min(10, len(ej_filtrados)), 6)
@@ -283,7 +372,6 @@ else:
     st.warning("Selecciona material.")
     st.stop()
 
-# Selección
 st.subheader("Selección de Ejercicios")
 nombres_fil = [e['nombre'] for e in ej_filtrados]
 seleccion = st.multiselect("Elige:", nombres_fil, max_selections=num_ej)
@@ -300,7 +388,6 @@ if len(nombres_finales) < num_ej:
 for nom in nombres_finales:
     seleccionados_data.append(next(x for x in ej_filtrados if x['nombre'] == nom))
 
-# Visor previo
 st.markdown("---")
 st.caption("Vista previa de imágenes:")
 cols_prev = st.columns(6)
@@ -312,7 +399,6 @@ for i, item in enumerate(seleccionados_data):
         else:
             st.error(f"❌ {item['imagen']}")
 
-# Inputs RM
 st.subheader("Cargas de Entrenamiento")
 st.write(f"Introduce el 1RM actual. Se calculará el **{intensidad_seleccionada}%** automáticamente.")
 cols = st.columns(3)
@@ -321,7 +407,6 @@ for i, ej in enumerate(seleccionados_data):
     with cols[i%3]:
         rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5)
 
-# --- BOTONES DE ACCIÓN ---
 col_gen, col_reset = st.columns([3, 1])
 
 with col_gen:
@@ -330,7 +415,6 @@ with col_gen:
         
         for item in seleccionados_data:
             rm = rm_inputs[item['nombre']]
-            
             factor = intensidad_seleccionada / 100.0
             peso_real = int(rm * factor)
             
