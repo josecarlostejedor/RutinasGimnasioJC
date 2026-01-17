@@ -95,7 +95,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (MEJORADO VISUALMENTE) ---
+# --- GENERADOR WORD (CONTROL DE ALTURA DE FILAS) ---
 def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
     doc = Document()
     
@@ -104,8 +104,10 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     section.orientation = WD_ORIENT.LANDSCAPE
     section.page_width = Inches(11.69)
     section.page_height = Inches(8.27)
-    section.top_margin = Cm(1.27)
-    section.bottom_margin = Cm(1.27)
+    
+    # Márgenes ajustados para asegurar espacio
+    section.top_margin = Cm(1.0)
+    section.bottom_margin = Cm(1.0)
     section.left_margin = Cm(1.27)
     section.right_margin = Cm(1.27)
 
@@ -123,20 +125,15 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
 
     # ================= PÁGINA 1: PORTADA VISUAL =================
 
-    # Encabezado Principal (Tabla Ajustada para que quepa en una línea)
+    # Encabezado Principal
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
-    
-    # MODIFICACIÓN 1: AJUSTE DE ANCHOS PARA EVITAR SALTO DE LÍNEA
-    # El ancho útil es 10.69 pulgadas. 
-    # Damos mucho espacio al título (9.1) y comprimimos la fecha (1.5)
     head_tbl.columns[0].width = Inches(9.1) 
     head_tbl.columns[1].width = Inches(1.5)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
     
-    # Título Programa
     r1 = p.add_run(f"PROGRAMA DE ENTRAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
     r1.font.size = Pt(16)
@@ -144,32 +141,28 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
     
-    # Objetivo
+    # Datos alumno
     r_obj_label = p.add_run("OBJETIVO: ")
     r_obj_label.font.bold = True
     p.add_run(f"{objetivo}")
-    
     p.add_run("\t   ") 
     
-    # Intensidad
     r_int_label = p.add_run("INTENSIDAD DE TRABAJO: ")
     r_int_label.font.bold = True
     p.add_run(f"({intensidad_str})")
-    
     p.add_run("\t   ") 
     
-    # Alumno
     r_alu_label = p.add_run("ALUMNO/A: ")
     r_alu_label.font.bold = True
     p.add_run(f"{nombre_mostrar.upper()}")
 
-    # Fecha (Columna Derecha)
+    # Fecha
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p2.add_run(f"FECHA:\n{datetime.now().strftime('%d/%m/%Y')}").bold = True
     
-    # SUBTÍTULO
+    # Subtítulo Situación
     p_sub = doc.add_paragraph()
     p_sub.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     run_sub = p_sub.add_run("Situación de Aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano")
@@ -177,6 +170,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     run_sub.font.name = 'Cambria'
     run_sub.font.size = Pt(16)    
     
+    # XML Fuente Cambria
     rPr = run_sub._element.get_or_add_rPr()
     rFonts = OxmlElement('w:rFonts')
     rFonts.set(qn('w:ascii'), 'Cambria')
@@ -191,7 +185,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
-    # Grid de Imágenes
+    # Grid de Imágenes (LÓGICA MEJORADA DE TAMAÑO)
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -199,6 +193,18 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
     
+    # FORZAR ALTURA DE FILAS PARA QUE NO SALTEN DE PÁGINA
+    # Calculo: Aprox 1.7 pulgadas por fila da para 3 filas comodamente en A4
+    TR_HEIGHT_TWIPS = 2600 # Aprox 1.8 pulgadas
+    
+    for row in vis_table.rows:
+        tr = row._tr
+        trPr = tr.get_or_add_trPr()
+        trHeight = OxmlElement('w:trHeight')
+        trHeight.set(qn('w:val'), str(TR_HEIGHT_TWIPS))
+        trHeight.set(qn('w:hRule'), "atLeast") # O 'exact' si quieres ser muy estricto
+        trPr.append(trHeight)
+
     for i, row_data in enumerate(rutina_df.to_dict('records')):
         r = i // cols_visual
         c = i % cols_visual
@@ -211,7 +217,8 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         if ruta_img:
             try:
                 run = p.add_run()
-                run.add_picture(ruta_img, width=Inches(2.2), height=Inches(1.5))
+                # Reducimos un poco la altura de la imagen para asegurar que cabe texto + foto
+                run.add_picture(ruta_img, width=Inches(2.0), height=Inches(1.35))
                 p.add_run("\n")
             except Exception:
                 p.add_run(f"[Error Fichero]\n")
@@ -222,7 +229,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
-    # SALTO DE PÁGINA
+    # SALTO DE PÁGINA OBLIGATORIO
     doc.add_page_break()
 
     # ================= PÁGINA 2: RUTINA DETALLADA =================
@@ -247,13 +254,11 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         
     for idx, row_data in rutina_df.iterrows():
         row_cells = tech_table.add_row().cells
-        
         for i in range(6):
             row_cells[i].width = Inches(widths[i])
 
         row_cells[0].text = str(idx + 1)
         row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
         row_cells[1].text = row_data['Ejercicio']
         row_cells[2].text = f"4 x {row_data['Reps']}"
         row_cells[3].text = f"{row_data['Peso']} kg"
@@ -281,24 +286,22 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         {"val": "18-20", "txt": "Máximo", "icon": "🥵", "color": "E6B0AA"}
     ]
     
-    # Fila 1: Iconos Grandes
+    # Fila 1 (Iconos Grandes)
     row_icons = borg_table.rows[0]
     for i, data in enumerate(borg_data):
         c = row_icons.cells[i]
         p = c.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # MODIFICACIÓN 2: ICONO MÁS GRANDE EN SU PROPIO RUN
         run_icon = p.add_run(f"{data['icon']}\n")
-        run_icon.font.size = Pt(26) # Icono Grande
+        run_icon.font.size = Pt(26) 
         
-        # NÚMERO TAMAÑO NORMAL
         run_val = p.add_run(f"{data['val']}")
-        run_val.font.size = Pt(14)  # Número normal
+        run_val.font.size = Pt(14)
         
         set_cell_bg_color(c, data['color'])
 
-    # Fila 2: Texto
+    # Fila 2 (Texto)
     row_text = borg_table.rows[1]
     for i, data in enumerate(borg_data):
         c = row_text.cells[i]
@@ -307,7 +310,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         p.add_run(data['txt']).font.bold = True
         set_cell_bg_color(c, data['color'])
 
-    # Fila 3: Casillas
+    # Fila 3 (Checks)
     row_check = borg_table.rows[2]
     tr = row_check._tr
     trPr = tr.get_or_add_trPr()
@@ -317,8 +320,6 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
 
     for i, data in enumerate(borg_data):
         c = row_check.cells[i]
-        p = c.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         set_cell_bg_color(c, data['color'])
 
     p_note = doc.add_paragraph("Marca con una X la sensación global al terminar el entrenamiento.")
@@ -329,8 +330,26 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     buffer.seek(0)
     return buffer
 
-# --- INTERFAZ STREAMLIT ---
-st.title("🏋️ Generador Científico de Rutinas")
+# --- INTERFAZ STREAMLIT (TEXTOS NUEVOS) ---
+
+# Título Principal con formato Markdown
+st.markdown("""
+<style>
+.big-font {
+    font-size:30px !important;
+    font-weight: bold;
+}
+.sub-font {
+    font-size:20px !important;
+    font-style: italic;
+    color: #555;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<p class="big-font">Generador Científico de Rutinas creado por José Carlos Tejedor Lorenzo</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-font">Situación de aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano.</p>', unsafe_allow_html=True)
+st.markdown("---")
 
 # Diagnóstico Sidebar
 st.sidebar.markdown("### 📂 Estado")
