@@ -95,7 +95,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (RENOVADO) ---
+# --- GENERADOR WORD (ACTUALIZADO VISUALMENTE) ---
 def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
     doc = Document()
     
@@ -112,48 +112,83 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     # --- PIE DE PÁGINA (FOOTER) ---
     footer = section.footer
     p_foot = footer.paragraphs[0]
-    p_foot.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run_foot = p_foot.add_run("Programa creado por Jose Carlos Tejedor. Página ")
-    run_foot.font.size = Pt(9)
-    add_page_number(run_foot) # Inserta número de página automático
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT # Alineado a la derecha
+    
+    # Texto del autor
+    run_autor = p_foot.add_run("Programa creado por José Carlos Tejedor Lorenzo.            Página ")
+    run_autor.font.size = Pt(10)
+    
+    # Número de página dinámico
+    run_num = p_foot.add_run()
+    run_num.font.size = Pt(10)
+    add_page_number(run_num)
 
     # ================= PÁGINA 1: PORTADA VISUAL =================
 
-    # Encabezado Principal
+    # Encabezado Principal (Tabla)
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
-    head_tbl.columns[0].width = Inches(8)
-    head_tbl.columns[1].width = Inches(3)
+    head_tbl.columns[0].width = Inches(9) # Hacemos más ancha la columna izquierda
+    head_tbl.columns[1].width = Inches(2)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
-    r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
+    
+    # Título Programa
+    r1 = p.add_run(f"PROGRAMA DE ENTRAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
     r1.font.size = Pt(16)
     r1.font.color.rgb = RGBColor(41, 128, 185)
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
-    p.add_run(f"OBJETIVO: {objetivo} ({intensidad_str}) | ALUMNO: {nombre_mostrar.upper()}")
+    
+    # LÓGICA DE TEXTO EN NEGRITA Y NORMAL
+    # 1. Objetivo
+    r_obj_label = p.add_run("OBJETIVO: ")
+    r_obj_label.font.bold = True
+    p.add_run(f"{objetivo}")
+    
+    p.add_run("\t   ") # Espaciado
+    
+    # 2. Intensidad
+    r_int_label = p.add_run("INTENSIDAD DE TRABAJO: ")
+    r_int_label.font.bold = True
+    p.add_run(f"({intensidad_str})")
+    
+    p.add_run("\t   ") # Espaciado
+    
+    # 3. Alumno/a
+    r_alu_label = p.add_run("ALUMNO/A: ")
+    r_alu_label.font.bold = True
+    p.add_run(f"{nombre_mostrar.upper()}")
 
+    # Fecha (Columna Derecha)
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p2.add_run(f"FECHA: {datetime.now().strftime('%d/%m/%Y')}\n").bold = True
     
-    # Subtítulo Situación de Aprendizaje
+    # SUBTÍTULO SITUACIÓN DE APRENDIZAJE
     p_sub = doc.add_paragraph()
-    p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.LEFT # Alineado a la izquierda
     run_sub = p_sub.add_run("Situación de Aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano")
     run_sub.font.bold = True
-    run_sub.font.italic = True
-    run_sub.font.size = Pt(11)
+    run_sub.font.name = 'Cambria' # Fuente Cambria
+    run_sub.font.size = Pt(16)    # Tamaño 16
+    
+    # Truco para forzar Cambria en XML si Word se resiste
+    rPr = run_sub._element.get_or_add_rPr()
+    rFonts = OxmlElement('w:rFonts')
+    rFonts.set(qn('w:ascii'), 'Cambria')
+    rFonts.set(qn('w:hAnsi'), 'Cambria')
+    rPr.append(rFonts)
 
     doc.add_paragraph("_" * 95)
 
-    # Título Sección 1 (Grande)
+    # Título Sección 1
     h1 = doc.add_heading(level=1)
     run_h1 = h1.add_run('1. Guía Visual de Ejercicios')
-    run_h1.font.size = Pt(18) # Letra más grande
+    run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
     # Grid de Imágenes
@@ -192,31 +227,27 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
 
     # ================= PÁGINA 2: RUTINA DETALLADA =================
 
-    # Título Sección 2 (Grande)
+    # Título Sección 2
     h2 = doc.add_heading(level=1)
     run_h2 = h2.add_run('2. Rutina Detallada')
     run_h2.font.size = Pt(18)
     run_h2.font.color.rgb = RGBColor(44, 62, 80)
 
-    # Tabla Técnica con anchos personalizados
+    # Tabla Técnica
     tech_table = doc.add_table(rows=1, cols=6)
     tech_table.style = 'Table Grid'
-    tech_table.autofit = False # Importante para que respete los anchos
+    tech_table.autofit = False 
     
-    # Definición de anchos (Suma total aprox 10.6 pulgadas)
     widths = [0.7, 3.5, 1.5, 1.0, 1.5, 2.4] 
     headers = ["Orden", "Ejercicio", "Series x Reps", "Carga", "Descanso", "Notas"]
     
-    # Configurar cabecera
     row_hdr = tech_table.rows[0]
     for i, h in enumerate(headers):
         style_header_cell(row_hdr.cells[i], h, widths[i])
         
-    # Rellenar filas
     for idx, row_data in rutina_df.iterrows():
         row_cells = tech_table.add_row().cells
         
-        # Aplicar anchos a las celdas de datos también
         for i in range(6):
             row_cells[i].width = Inches(widths[i])
 
@@ -231,14 +262,14 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
 
     doc.add_paragraph("\n")
 
-    # Título Sección 3 (Grande)
+    # Título Sección 3
     h3 = doc.add_heading(level=1)
     run_h3 = h3.add_run('3. Percepción del Esfuerzo (RPE)')
     run_h3.font.size = Pt(18)
     run_h3.font.color.rgb = RGBColor(44, 62, 80)
 
     # Tabla Borg
-    borg_table = doc.add_table(rows=3, cols=5) # 3 filas: Iconos, Texto, Casillas vacías
+    borg_table = doc.add_table(rows=3, cols=5)
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
     
@@ -250,7 +281,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         {"val": "18-20", "txt": "Máximo", "icon": "🥵", "color": "E6B0AA"}
     ]
     
-    # Fila 1: Iconos y números
+    # Fila 1
     row_icons = borg_table.rows[0]
     for i, data in enumerate(borg_data):
         c = row_icons.cells[i]
@@ -260,7 +291,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         run.font.size = Pt(14)
         set_cell_bg_color(c, data['color'])
 
-    # Fila 2: Texto descriptivo
+    # Fila 2
     row_text = borg_table.rows[1]
     for i, data in enumerate(borg_data):
         c = row_text.cells[i]
@@ -269,23 +300,20 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         p.add_run(data['txt']).font.bold = True
         set_cell_bg_color(c, data['color'])
 
-    # Fila 3: Casillas para marcar con X (Manteniendo color)
+    # Fila 3
     row_check = borg_table.rows[2]
-    # Hacer esta fila un poco más alta
     tr = row_check._tr
     trPr = tr.get_or_add_trPr()
     trHeight = OxmlElement('w:trHeight')
-    trHeight.set(qn('w:val'), "600") # Altura en twips
+    trHeight.set(qn('w:val'), "600")
     trPr.append(trHeight)
 
     for i, data in enumerate(borg_data):
         c = row_check.cells[i]
         p = c.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Dejamos vacío o ponemos un guion bajo sutil
         set_cell_bg_color(c, data['color'])
 
-    # Añadir instrucción pequeña debajo
     p_note = doc.add_paragraph("Marca con una X la sensación global al terminar el entrenamiento.")
     p_note.style = "Caption"
 
