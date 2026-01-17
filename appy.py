@@ -95,7 +95,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (ACTUALIZADO VISUALMENTE) ---
+# --- GENERADOR WORD (MEJORADO VISUALMENTE) ---
 def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
     doc = Document()
     
@@ -112,24 +112,26 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     # --- PIE DE PÁGINA (FOOTER) ---
     footer = section.footer
     p_foot = footer.paragraphs[0]
-    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT # Alineado a la derecha
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT 
     
-    # Texto del autor
     run_autor = p_foot.add_run("Programa creado por José Carlos Tejedor Lorenzo.            Página ")
     run_autor.font.size = Pt(10)
     
-    # Número de página dinámico
     run_num = p_foot.add_run()
     run_num.font.size = Pt(10)
     add_page_number(run_num)
 
     # ================= PÁGINA 1: PORTADA VISUAL =================
 
-    # Encabezado Principal (Tabla)
+    # Encabezado Principal (Tabla Ajustada para que quepa en una línea)
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
-    head_tbl.columns[0].width = Inches(9) # Hacemos más ancha la columna izquierda
-    head_tbl.columns[1].width = Inches(2)
+    
+    # MODIFICACIÓN 1: AJUSTE DE ANCHOS PARA EVITAR SALTO DE LÍNEA
+    # El ancho útil es 10.69 pulgadas. 
+    # Damos mucho espacio al título (9.1) y comprimimos la fecha (1.5)
+    head_tbl.columns[0].width = Inches(9.1) 
+    head_tbl.columns[1].width = Inches(1.5)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
@@ -142,22 +144,21 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
     
-    # LÓGICA DE TEXTO EN NEGRITA Y NORMAL
-    # 1. Objetivo
+    # Objetivo
     r_obj_label = p.add_run("OBJETIVO: ")
     r_obj_label.font.bold = True
     p.add_run(f"{objetivo}")
     
-    p.add_run("\t   ") # Espaciado
+    p.add_run("\t   ") 
     
-    # 2. Intensidad
+    # Intensidad
     r_int_label = p.add_run("INTENSIDAD DE TRABAJO: ")
     r_int_label.font.bold = True
     p.add_run(f"({intensidad_str})")
     
-    p.add_run("\t   ") # Espaciado
+    p.add_run("\t   ") 
     
-    # 3. Alumno/a
+    # Alumno
     r_alu_label = p.add_run("ALUMNO/A: ")
     r_alu_label.font.bold = True
     p.add_run(f"{nombre_mostrar.upper()}")
@@ -166,17 +167,16 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    p2.add_run(f"FECHA: {datetime.now().strftime('%d/%m/%Y')}\n").bold = True
+    p2.add_run(f"FECHA:\n{datetime.now().strftime('%d/%m/%Y')}").bold = True
     
-    # SUBTÍTULO SITUACIÓN DE APRENDIZAJE
+    # SUBTÍTULO
     p_sub = doc.add_paragraph()
-    p_sub.alignment = WD_ALIGN_PARAGRAPH.LEFT # Alineado a la izquierda
+    p_sub.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     run_sub = p_sub.add_run("Situación de Aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano")
     run_sub.font.bold = True
-    run_sub.font.name = 'Cambria' # Fuente Cambria
-    run_sub.font.size = Pt(16)    # Tamaño 16
+    run_sub.font.name = 'Cambria'
+    run_sub.font.size = Pt(16)    
     
-    # Truco para forzar Cambria en XML si Word se resiste
     rPr = run_sub._element.get_or_add_rPr()
     rFonts = OxmlElement('w:rFonts')
     rFonts.set(qn('w:ascii'), 'Cambria')
@@ -222,7 +222,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
-    # SALTO DE PÁGINA OBLIGATORIO
+    # SALTO DE PÁGINA
     doc.add_page_break()
 
     # ================= PÁGINA 2: RUTINA DETALLADA =================
@@ -281,17 +281,24 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         {"val": "18-20", "txt": "Máximo", "icon": "🥵", "color": "E6B0AA"}
     ]
     
-    # Fila 1
+    # Fila 1: Iconos Grandes
     row_icons = borg_table.rows[0]
     for i, data in enumerate(borg_data):
         c = row_icons.cells[i]
         p = c.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(f"{data['icon']}\n{data['val']}")
-        run.font.size = Pt(14)
+        
+        # MODIFICACIÓN 2: ICONO MÁS GRANDE EN SU PROPIO RUN
+        run_icon = p.add_run(f"{data['icon']}\n")
+        run_icon.font.size = Pt(26) # Icono Grande
+        
+        # NÚMERO TAMAÑO NORMAL
+        run_val = p.add_run(f"{data['val']}")
+        run_val.font.size = Pt(14)  # Número normal
+        
         set_cell_bg_color(c, data['color'])
 
-    # Fila 2
+    # Fila 2: Texto
     row_text = borg_table.rows[1]
     for i, data in enumerate(borg_data):
         c = row_text.cells[i]
@@ -300,7 +307,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         p.add_run(data['txt']).font.bold = True
         set_cell_bg_color(c, data['color'])
 
-    # Fila 3
+    # Fila 3: Casillas
     row_check = borg_table.rows[2]
     tr = row_check._tr
     trPr = tr.get_or_add_trPr()
