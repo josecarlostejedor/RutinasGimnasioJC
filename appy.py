@@ -95,7 +95,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (CONTROL DE ALTURA DE FILAS) ---
+# --- GENERADOR WORD (AJUSTE DE TÍTULO) ---
 def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
     doc = Document()
     
@@ -105,7 +105,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     section.page_width = Inches(11.69)
     section.page_height = Inches(8.27)
     
-    # Márgenes ajustados para asegurar espacio
+    # Márgenes
     section.top_margin = Cm(1.0)
     section.bottom_margin = Cm(1.0)
     section.left_margin = Cm(1.27)
@@ -128,15 +128,19 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     # Encabezado Principal
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
-    head_tbl.columns[0].width = Inches(9.1) 
-    head_tbl.columns[1].width = Inches(1.5)
+    
+    # AJUSTE DE COLUMNAS PARA EVITAR SALTO DE LÍNEA EN TÍTULO
+    # Damos aún más espacio a la izquierda (9.4) y reducimos la fecha al mínimo necesario (1.2)
+    head_tbl.columns[0].width = Inches(9.4) 
+    head_tbl.columns[1].width = Inches(1.2)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
     
-    r1 = p.add_run(f"PROGRAMA DE ENTRAMIENTO DE: {titulo_material.upper()}\n")
+    # Título Programa (REDUCIDO A 14pt PARA QUE QUEPA EN UNA LÍNEA)
+    r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
-    r1.font.size = Pt(16)
+    r1.font.size = Pt(14) # Reducido de 16 a 14 para evitar wrapping
     r1.font.color.rgb = RGBColor(41, 128, 185)
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
@@ -170,7 +174,6 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     run_sub.font.name = 'Cambria'
     run_sub.font.size = Pt(16)    
     
-    # XML Fuente Cambria
     rPr = run_sub._element.get_or_add_rPr()
     rFonts = OxmlElement('w:rFonts')
     rFonts.set(qn('w:ascii'), 'Cambria')
@@ -185,7 +188,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
-    # Grid de Imágenes (LÓGICA MEJORADA DE TAMAÑO)
+    # Grid de Imágenes
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -193,16 +196,14 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
     
-    # FORZAR ALTURA DE FILAS PARA QUE NO SALTEN DE PÁGINA
-    # Calculo: Aprox 1.7 pulgadas por fila da para 3 filas comodamente en A4
-    TR_HEIGHT_TWIPS = 2600 # Aprox 1.8 pulgadas
-    
+    # Forzar altura de filas
+    TR_HEIGHT_TWIPS = 2600 
     for row in vis_table.rows:
         tr = row._tr
         trPr = tr.get_or_add_trPr()
         trHeight = OxmlElement('w:trHeight')
         trHeight.set(qn('w:val'), str(TR_HEIGHT_TWIPS))
-        trHeight.set(qn('w:hRule'), "atLeast") # O 'exact' si quieres ser muy estricto
+        trHeight.set(qn('w:hRule'), "atLeast")
         trPr.append(trHeight)
 
     for i, row_data in enumerate(rutina_df.to_dict('records')):
@@ -217,7 +218,6 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         if ruta_img:
             try:
                 run = p.add_run()
-                # Reducimos un poco la altura de la imagen para asegurar que cabe texto + foto
                 run.add_picture(ruta_img, width=Inches(2.0), height=Inches(1.35))
                 p.add_run("\n")
             except Exception:
@@ -229,7 +229,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
-    # SALTO DE PÁGINA OBLIGATORIO
+    # SALTO DE PÁGINA
     doc.add_page_break()
 
     # ================= PÁGINA 2: RUTINA DETALLADA =================
@@ -330,7 +330,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     buffer.seek(0)
     return buffer
 
-# --- INTERFAZ STREAMLIT (TEXTOS NUEVOS) ---
+# --- INTERFAZ STREAMLIT ---
 
 # Título Principal con formato Markdown
 st.markdown("""
