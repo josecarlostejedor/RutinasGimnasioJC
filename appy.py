@@ -528,13 +528,12 @@ with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.joi
 nombres_fil = [e['nombre'] for e in ej_filtrados]
 seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej)
 
-# --- CHECKBOX PARA EVITAR RELLENO AUTOMÁTICO ---
+# --- CHECKBOX RELLENO ---
 rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios (si no seleccionas suficientes)", value=True)
 
 seleccionados_data = []
 nombres_finales = seleccion.copy()
 
-# Lógica de relleno (Solo si el checkbox está activo)
 if rellenar_auto and len(nombres_finales) < num_ej:
     pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
     needed = num_ej - len(nombres_finales)
@@ -542,7 +541,7 @@ if rellenar_auto and len(nombres_finales) < num_ej:
         extras = random.sample(pool, needed)
         nombres_finales.extend([x['nombre'] for x in extras])
 
-# Reconstruir la lista de objetos completa basada en nombres_finales
+# Reconstruir objetos
 seleccionados_data = []
 for nom in nombres_finales:
     obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
@@ -550,7 +549,6 @@ for nom in nombres_finales:
         seleccionados_data.append(obj_ejercicio)
 
 st.markdown("---")
-# Cambio de texto para que tenga sentido con o sin relleno
 if rellenar_auto:
     st.caption("Has seleccionado (o se ha completado automáticamente):")
 else:
@@ -594,7 +592,6 @@ if pool_estiramientos:
     num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4)
     seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select)
     
-    # Relleno automático también para estiramientos (opcional, pero consistente)
     estiramientos_finales_nombres = seleccion_est.copy()
     if len(estiramientos_finales_nombres) < num_est_select:
         pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
@@ -659,4 +656,5 @@ with col_gen:
 with col_reset:
     st.write("")
     if st.button("🔄 Reiniciar", use_container_width=True):
+        st.session_state.clear() # <<< AQUÍ ESTÁ EL CAMBIO CRUCIAL
         st.rerun()
