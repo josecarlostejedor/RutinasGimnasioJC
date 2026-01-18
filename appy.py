@@ -653,8 +653,10 @@ with col_gen:
         st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
         st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
+# --- LÓGICA DE REINICIO CON CALLBACK ---
+def reset_app():
+    st.session_state.clear()
+
 with col_reset:
     st.write("")
-    if st.button("🔄 Reiniciar", use_container_width=True):
-        st.session_state.clear() # <<< AQUÍ ESTÁ EL CAMBIO CRUCIAL
-        st.rerun()
+    st.button("🔄 Reiniciar", use_container_width=True, on_click=reset_app)
