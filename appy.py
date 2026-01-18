@@ -95,7 +95,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (ACTUALIZADO CON ESTIRAMIENTOS) ---
+# --- GENERADOR WORD ---
 def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo):
     doc = Document()
     
@@ -286,7 +286,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 3: ESTIRAMIENTOS (NUEVA) =================
+    # ================= SECCIÓN 3: ESTIRAMIENTOS =================
     
     if lista_estiramientos:
         h3 = doc.add_heading(level=1)
@@ -294,7 +294,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         run_h3.font.size = Pt(18)
         run_h3.font.color.rgb = RGBColor(44, 62, 80)
 
-        # Grid de Estiramientos (Mismo estilo que Guía Visual)
         num_est = len(lista_estiramientos)
         cols_est = 4
         rows_est = (num_est + cols_est - 1) // cols_est
@@ -302,7 +301,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         est_table = doc.add_table(rows=rows_est, cols=cols_est)
         est_table.style = 'Table Grid'
         
-        # Iterar sobre la lista de objetos de estiramiento
         for i, item_est in enumerate(lista_estiramientos):
             r = i // cols_est
             c = i % cols_est
@@ -315,7 +313,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             if ruta_img:
                 try:
                     run = p.add_run()
-                    # Imágenes de estiramientos un poco más pequeñas si se quiere
                     run.add_picture(ruta_img, width=Inches(1.8), height=Inches(1.2))
                     p.add_run("\n")
                 except Exception:
@@ -329,7 +326,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         
         doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 4: BORG (Renombrada) =================
+    # ================= SECCIÓN 4: BORG =================
 
     # Título Sección 4
     h4 = doc.add_heading(level=1)
@@ -396,7 +393,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
 # --- INTERFAZ STREAMLIT ---
 
-# Título Principal con formato Markdown
+# Título Principal
 st.markdown("""
 <style>
 .big-font {
@@ -439,13 +436,11 @@ elif isinstance(DB_EJERCICIOS, str):
 col1, col2 = st.columns(2)
 with col1:
     alumno = st.text_input("Nombre del Alumno:", "")
-    # FILTRO: EXCLUIMOS LOS ESTIRAMIENTOS DE LA LISTA DE MATERIAL PRINCIPAL
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
     sel_tipos = st.multiselect("Material de Entrenamiento:", options=tipos_entreno, default=tipos_entreno)
     
-    # CARDIO
     cardio_seleccion = st.selectbox(
         "Todos los días cardio:", 
         ["Bicicleta", "Cinta de Correr", "Step", "Remo de cardio"]
@@ -506,9 +501,23 @@ else:
     st.warning("Selecciona material.")
     st.stop()
 
+# --- SELECCIÓN DE EJERCICIOS CON GALERÍA PREVIA ---
 st.subheader("Selección de Ejercicios")
+
+# <<< MODIFICACIÓN: GALERÍA VISUAL DESPLEGABLE >>>
+with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.join(sel_tipos)})"):
+    cols_galeria = st.columns(6)
+    for i, ej in enumerate(ej_filtrados):
+        with cols_galeria[i % 6]:
+            ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
+            if ruta:
+                st.image(ruta, caption=ej['nombre'], use_container_width=True)
+            else:
+                st.caption(f"❌ {ej['nombre']}")
+# <<< FIN MODIFICACIÓN >>>
+
 nombres_fil = [e['nombre'] for e in ej_filtrados]
-seleccion = st.multiselect("Elige:", nombres_fil, max_selections=num_ej)
+seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej)
 
 seleccionados_data = []
 nombres_finales = seleccion.copy()
@@ -523,7 +532,8 @@ for nom in nombres_finales:
     seleccionados_data.append(next(x for x in ej_filtrados if x['nombre'] == nom))
 
 st.markdown("---")
-st.caption("Vista previa de imágenes:")
+# Vista previa de lo seleccionado (se mantiene como confirmación)
+st.caption("Has seleccionado:")
 cols_prev = st.columns(6)
 for i, item in enumerate(seleccionados_data):
     with cols_prev[i % 6]:
@@ -545,18 +555,25 @@ for i, ej in enumerate(seleccionados_data):
 st.markdown("---")
 st.subheader("Vuelta a la Calma: Estiramientos")
 
-# Filtramos solo los que son de tipo 'estiramiento' (case insensitive search)
 pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo']).lower()]
 nombres_est = [e['nombre'] for e in pool_estiramientos]
 
 if pool_estiramientos:
-    # Selector de cantidad
+    # <<< MODIFICACIÓN: GALERÍA DE ESTIRAMIENTOS PREVIA >>>
+    with st.expander("🧘 Ver Galería Visual de Estiramientos disponibles"):
+        cols_est_gal = st.columns(6)
+        for i, ej in enumerate(pool_estiramientos):
+            with cols_est_gal[i % 6]:
+                ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
+                if ruta:
+                    st.image(ruta, caption=ej['nombre'], use_container_width=True)
+                else:
+                    st.caption(f"❌ {ej['nombre']}")
+    # <<< FIN MODIFICACIÓN >>>
+
     num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4)
-    
-    # Multiselect
     seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select)
     
-    # Rellenar objetos completos
     estiramientos_finales = []
     for nom in seleccion_est:
         estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
@@ -569,7 +586,7 @@ else:
 col_gen, col_reset = st.columns([3, 1])
 
 with col_gen:
-    st.write("") # Espacio
+    st.write("")
     if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True):
         rutina_export = []
         
@@ -598,7 +615,7 @@ with col_gen:
         
         docx = generar_word_final(
             rutina_df=df, 
-            lista_estiramientos=estiramientos_finales, # Pasamos la lista nueva
+            lista_estiramientos=estiramientos_finales, 
             objetivo=objetivo, 
             alumno=alumno, 
             titulo_material=titulo_doc, 
