@@ -75,7 +75,7 @@ def encontrar_imagen_recursiva(nombre_objetivo):
                     return os.path.join(root, filename), "Por Nombre"
     return None, f"No encontrado"
 
-# --- CARGAR EXCEL (CON CORRECCIÓN DE TILDES) ---
+# --- CARGAR EXCEL ---
 @st.cache_data
 def cargar_ejercicios():
     try:
@@ -89,7 +89,7 @@ def cargar_ejercicios():
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
             
-            # CORRECCIÓN AUTOMÁTICA DE "Olimpica" -> "Olímpica"
+            # Corrección de tildes
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.strip()
@@ -135,14 +135,12 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     # Encabezado Principal
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
-    
     head_tbl.columns[0].width = Inches(9.4) 
     head_tbl.columns[1].width = Inches(1.2)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
     
-    # Título
     r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
     r1.font.size = Pt(14) 
@@ -215,7 +213,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     
     doc.add_paragraph("")
 
-    # Grid de Imágenes (Rutina Principal)
+    # Grid de Imágenes (Rutina)
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -223,7 +221,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
     
-    # Altura forzada
     TR_HEIGHT_TWIPS = 2600 
     for row in vis_table.rows:
         tr = row._tr
@@ -256,18 +253,15 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
-    # SALTO DE PÁGINA
     doc.add_page_break()
 
     # ================= PÁGINA 2: RUTINA DETALLADA =================
 
-    # Título Sección 2
     h2 = doc.add_heading(level=1)
     run_h2 = h2.add_run('2. Rutina Detallada')
     run_h2.font.size = Pt(18)
     run_h2.font.color.rgb = RGBColor(44, 62, 80)
 
-    # Tabla Técnica
     tech_table = doc.add_table(rows=1, cols=6)
     tech_table.style = 'Table Grid'
     tech_table.autofit = False 
@@ -336,13 +330,11 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     # ================= SECCIÓN 4: BORG =================
 
-    # Título Sección 4
     h4 = doc.add_heading(level=1)
     run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE)')
     run_h4.font.size = Pt(18)
     run_h4.font.color.rgb = RGBColor(44, 62, 80)
 
-    # Tabla Borg
     borg_table = doc.add_table(rows=3, cols=5)
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
@@ -355,7 +347,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         {"val": "18-20", "txt": "Máximo", "icon": "🥵", "color": "E6B0AA"}
     ]
     
-    # Fila 1 (Iconos Grandes)
     row_icons = borg_table.rows[0]
     for i, data in enumerate(borg_data):
         c = row_icons.cells[i]
@@ -370,7 +361,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         
         set_cell_bg_color(c, data['color'])
 
-    # Fila 2 (Texto)
     row_text = borg_table.rows[1]
     for i, data in enumerate(borg_data):
         c = row_text.cells[i]
@@ -379,7 +369,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         p.add_run(data['txt']).font.bold = True
         set_cell_bg_color(c, data['color'])
 
-    # Fila 3 (Checks)
     row_check = borg_table.rows[2]
     tr = row_check._tr
     trPr = tr.get_or_add_trPr()
@@ -401,18 +390,10 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
 # --- INTERFAZ STREAMLIT ---
 
-# Título Principal
 st.markdown("""
 <style>
-.big-font {
-    font-size:30px !important;
-    font-weight: bold;
-}
-.sub-font {
-    font-size:20px !important;
-    font-style: italic;
-    color: #555;
-}
+.big-font { font-size:30px !important; font-weight: bold; }
+.sub-font { font-size:20px !important; font-style: italic; color: #555; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -420,8 +401,7 @@ st.markdown('<p class="big-font">Generador Científico de Rutinas creado por Jos
 st.markdown('<p class="sub-font">Situación de aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano.</p>', unsafe_allow_html=True)
 st.markdown("---")
 
-# Diagnóstico Sidebar
-st.sidebar.markdown("### 📂 Estado")
+# Estado de imágenes
 imagenes_encontradas = []
 for root, dirs, files in os.walk("."):
     for file in files:
@@ -440,25 +420,28 @@ elif isinstance(DB_EJERCICIOS, str):
     st.error(DB_EJERCICIOS)
     st.stop()
 
-# --- CONFIGURACIÓN DE LA SESIÓN ---
+# --- CONFIGURACIÓN DE LA SESIÓN (CON KEYS ÚNICOS) ---
 col1, col2 = st.columns(2)
 with col1:
-    alumno = st.text_input("Nombre del Alumno:", "")
+    # KEY AGREGADO
+    alumno = st.text_input("Nombre del Alumno:", "", key="k_alumno")
     
-    # 1. OBTENER TIPOS
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
-    # 2. FILTRAR ESTIRAMIENTOS PARA QUE NO SALGAN EN MATERIAL
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
-    sel_tipos = st.multiselect("Material de Entrenamiento:", options=tipos_entreno, default=tipos_entreno)
+    # KEY AGREGADO
+    sel_tipos = st.multiselect("Material de Entrenamiento:", options=tipos_entreno, default=tipos_entreno, key="k_material")
     
+    # KEY AGREGADO
     cardio_seleccion = st.selectbox(
         "Todos los días cardio:", 
-        ["Bicicleta", "Cinta de Correr", "Step", "Remo de cardio"]
+        ["Bicicleta", "Cinta de Correr", "Step", "Remo de cardio"],
+        key="k_cardio_type"
     )
 
 with col2:
-    objetivo = st.selectbox("Objetivo:", ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"])
+    # KEY AGREGADO
+    objetivo = st.selectbox("Objetivo:", ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"], key="k_objetivo")
     
     intensidad_seleccionada = 0
     reps_seleccionadas = ""
@@ -471,12 +454,15 @@ with col2:
         
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
-            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100])
+            # KEY AGREGADO
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100], key="k_int_hyp")
         with col_h2:
-            val_reps = st.selectbox("Repeticiones:", [1, 2, 3, 4, 5, 6])
+            # KEY AGREGADO
+            val_reps = st.selectbox("Repeticiones:", [1, 2, 3, 4, 5, 6], key="k_reps_hyp")
             reps_seleccionadas = str(val_reps)
         with col_h3:
-            descanso_seleccionado = st.selectbox("Descanso:", ["3 min", "4 min", "5 min"])
+            # KEY AGREGADO
+            descanso_seleccionado = st.selectbox("Descanso:", ["3 min", "4 min", "5 min"], key="k_desc_hyp")
             
     elif objetivo == "Definición Muscular":
         st.info("Rango: 6-12 Reps | Intensidad 60-85%")
@@ -484,12 +470,15 @@ with col2:
         
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
-            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75, 80, 85])
+            # KEY AGREGADO
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75, 80, 85], key="k_int_def")
         with col_d2:
-            val_reps = st.selectbox("Repeticiones:", [6, 7, 8, 9, 10, 11, 12])
+            # KEY AGREGADO
+            val_reps = st.selectbox("Repeticiones:", [6, 7, 8, 9, 10, 11, 12], key="k_reps_def")
             reps_seleccionadas = str(val_reps)
         with col_d3:
-            descanso_seleccionado = st.selectbox("Descanso:", ["1 min", "2 min", "3 min"])
+            # KEY AGREGADO
+            descanso_seleccionado = st.selectbox("Descanso:", ["1 min", "2 min", "3 min"], key="k_desc_def")
             
     elif objetivo == "Resistencia Muscular":
         st.info("Rango: 13-20 Reps | Intensidad < 60%")
@@ -497,17 +486,21 @@ with col2:
         
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
-            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 55, 50, 45, 40])
+            # KEY AGREGADO
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 55, 50, 45, 40], key="k_int_res")
         with col_r2:
-            val_reps = st.selectbox("Repeticiones:", [13, 14, 15, 16, 17, 18, 19, 20])
+            # KEY AGREGADO
+            val_reps = st.selectbox("Repeticiones:", [13, 14, 15, 16, 17, 18, 19, 20], key="k_reps_res")
             reps_seleccionadas = str(val_reps)
         with col_r3:
             opciones_segundos = [f"{s} seg" for s in range(60, -1, -5)]
-            descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos)
+            # KEY AGREGADO
+            descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos, key="k_desc_res")
 
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
-    num_ej = st.slider("Cantidad de Ejercicios:", 1, min(10, len(ej_filtrados)), 6)
+    # KEY AGREGADO
+    num_ej = st.slider("Cantidad de Ejercicios:", 1, min(10, len(ej_filtrados)), 6, key="k_num_ej")
 else:
     st.warning("Selecciona material.")
     st.stop()
@@ -526,10 +519,11 @@ with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.joi
                 st.caption(f"❌ {ej['nombre']}")
 
 nombres_fil = [e['nombre'] for e in ej_filtrados]
-seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej)
+# KEY AGREGADO
+seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej, key="k_sel_ej")
 
-# --- CHECKBOX RELLENO ---
-rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios (si no seleccionas suficientes)", value=True)
+# KEY AGREGADO
+rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios", value=True, key="k_check_auto")
 
 seleccionados_data = []
 nombres_finales = seleccion.copy()
@@ -541,7 +535,6 @@ if rellenar_auto and len(nombres_finales) < num_ej:
         extras = random.sample(pool, needed)
         nombres_finales.extend([x['nombre'] for x in extras])
 
-# Reconstruir objetos
 seleccionados_data = []
 for nom in nombres_finales:
     obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
@@ -569,9 +562,10 @@ cols = st.columns(3)
 rm_inputs = {}
 for i, ej in enumerate(seleccionados_data):
     with cols[i%3]:
-        rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5)
+        # KEY DINÁMICO AGREGADO: Importante para borrar las cargas
+        rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5, key=f"rm_{ej['nombre']}")
 
-# --- NUEVA SECCIÓN: ESTIRAMIENTOS ---
+# --- ESTIRAMIENTOS ---
 st.markdown("---")
 st.subheader("Vuelta a la Calma: Estiramientos")
 
@@ -589,8 +583,10 @@ if pool_estiramientos:
                 else:
                     st.caption(f"❌ {ej['nombre']}")
 
-    num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4)
-    seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select)
+    # KEY AGREGADO
+    num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4, key="k_num_est")
+    # KEY AGREGADO
+    seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key="k_sel_est")
     
     estiramientos_finales_nombres = seleccion_est.copy()
     if len(estiramientos_finales_nombres) < num_est_select:
