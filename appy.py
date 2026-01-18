@@ -75,17 +75,30 @@ def encontrar_imagen_recursiva(nombre_objetivo):
                     return os.path.join(root, filename), "Por Nombre"
     return None, f"No encontrado"
 
-# --- CARGAR EXCEL ---
+# --- CARGAR EXCEL (CON CORRECCIÓN DE TILDES) ---
 @st.cache_data
 def cargar_ejercicios():
     try:
         if os.path.exists("DB_EJERCICIOS.xlsx"):
             df = pd.read_excel("DB_EJERCICIOS.xlsx")
             df.columns = df.columns.str.strip().str.lower()
+            
+            # Normalizar nombre columna
             if 'nombre' not in df.columns:
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
+            
+            # Asegurar columnas existen
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
+            
+            # CORRECCIÓN AUTOMÁTICA DE "Olimpica" -> "Olímpica"
+            # Esto soluciona el problema de categorías duplicadas
+            df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
+            df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
+            
+            # Limpieza general de espacios
+            df['tipo'] = df['tipo'].str.strip()
+            
             df = df.fillna("")
             return df.to_dict('records')
         else:
@@ -436,7 +449,10 @@ elif isinstance(DB_EJERCICIOS, str):
 col1, col2 = st.columns(2)
 with col1:
     alumno = st.text_input("Nombre del Alumno:", "")
+    
+    # 1. OBTENER TIPOS
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
+    # 2. FILTRAR ESTIRAMIENTOS PARA QUE NO SALGAN EN MATERIAL
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
     sel_tipos = st.multiselect("Material de Entrenamiento:", options=tipos_entreno, default=tipos_entreno)
@@ -501,10 +517,9 @@ else:
     st.warning("Selecciona material.")
     st.stop()
 
-# --- SELECCIÓN DE EJERCICIOS CON GALERÍA PREVIA ---
+# --- SELECCIÓN DE EJERCICIOS ---
 st.subheader("Selección de Ejercicios")
 
-# <<< MODIFICACIÓN: GALERÍA VISUAL DESPLEGABLE >>>
 with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.join(sel_tipos)})"):
     cols_galeria = st.columns(6)
     for i, ej in enumerate(ej_filtrados):
@@ -514,7 +529,6 @@ with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.joi
                 st.image(ruta, caption=ej['nombre'], use_container_width=True)
             else:
                 st.caption(f"❌ {ej['nombre']}")
-# <<< FIN MODIFICACIÓN >>>
 
 nombres_fil = [e['nombre'] for e in ej_filtrados]
 seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej)
@@ -528,12 +542,17 @@ if len(nombres_finales) < num_ej:
         extras = random.sample(pool, needed)
         nombres_finales.extend([x['nombre'] for x in extras])
         
+# CORRECCIÓN VITAL: Reconstruir 'seleccionados_data' con los objetos correctos
+# para evitar discrepancias en la vista previa "Has seleccionado"
+seleccionados_data = []
 for nom in nombres_finales:
-    seleccionados_data.append(next(x for x in ej_filtrados if x['nombre'] == nom))
+    # Busca el ejercicio en la lista filtrada
+    obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
+    if obj_ejercicio:
+        seleccionados_data.append(obj_ejercicio)
 
 st.markdown("---")
-# Vista previa de lo seleccionado (se mantiene como confirmación)
-st.caption("Has seleccionado:")
+st.caption("Has seleccionado (o completado automáticamente):")
 cols_prev = st.columns(6)
 for i, item in enumerate(seleccionados_data):
     with cols_prev[i % 6]:
@@ -559,7 +578,6 @@ pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo'
 nombres_est = [e['nombre'] for e in pool_estiramientos]
 
 if pool_estiramientos:
-    # <<< MODIFICACIÓN: GALERÍA DE ESTIRAMIENTOS PREVIA >>>
     with st.expander("🧘 Ver Galería Visual de Estiramientos disponibles"):
         cols_est_gal = st.columns(6)
         for i, ej in enumerate(pool_estiramientos):
@@ -569,7 +587,6 @@ if pool_estiramientos:
                     st.image(ruta, caption=ej['nombre'], use_container_width=True)
                 else:
                     st.caption(f"❌ {ej['nombre']}")
-    # <<< FIN MODIFICACIÓN >>>
 
     num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4)
     seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select)
