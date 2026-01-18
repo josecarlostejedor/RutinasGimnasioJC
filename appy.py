@@ -95,8 +95,8 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (AJUSTE DE TÍTULO) ---
-def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str):
+# --- GENERADOR WORD (CON NUEVA TABLA CARDIO) ---
+def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo):
     doc = Document()
     
     # 1. Configuración Página A4 Horizontal
@@ -105,7 +105,6 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     section.page_width = Inches(11.69)
     section.page_height = Inches(8.27)
     
-    # Márgenes
     section.top_margin = Cm(1.0)
     section.bottom_margin = Cm(1.0)
     section.left_margin = Cm(1.27)
@@ -129,18 +128,16 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
     
-    # AJUSTE DE COLUMNAS PARA EVITAR SALTO DE LÍNEA EN TÍTULO
-    # Damos aún más espacio a la izquierda (9.4) y reducimos la fecha al mínimo necesario (1.2)
     head_tbl.columns[0].width = Inches(9.4) 
     head_tbl.columns[1].width = Inches(1.2)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
     
-    # Título Programa (REDUCIDO A 14pt PARA QUE QUEPA EN UNA LÍNEA)
+    # Título
     r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
-    r1.font.size = Pt(14) # Reducido de 16 a 14 para evitar wrapping
+    r1.font.size = Pt(14) 
     r1.font.color.rgb = RGBColor(41, 128, 185)
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
@@ -166,7 +163,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     p2.add_run(f"FECHA:\n{datetime.now().strftime('%d/%m/%Y')}").bold = True
     
-    # Subtítulo Situación
+    # Subtítulo
     p_sub = doc.add_paragraph()
     p_sub.alignment = WD_ALIGN_PARAGRAPH.LEFT 
     run_sub = p_sub.add_run("Situación de Aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano")
@@ -188,6 +185,30 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
+    # --- NUEVA TABLA DE CARDIO (Pequeña, 2 Columnas) ---
+    cardio_table = doc.add_table(rows=1, cols=2)
+    cardio_table.style = 'Table Grid'
+    
+    # Columna A: Calentamiento
+    c_warm = cardio_table.cell(0,0)
+    p_warm = c_warm.paragraphs[0]
+    p_warm.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_w = p_warm.add_run("A) Calentamiento de 5 minutos de Duración")
+    run_w.font.bold = True
+    run_w.font.size = Pt(10) # Tamaño pequeño
+    set_cell_bg_color(c_warm, "EAEDED") # Gris muy claro
+    
+    # Columna B: Cardio Específico
+    c_card = cardio_table.cell(0,1)
+    p_card = c_card.paragraphs[0]
+    p_card.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_c = p_card.add_run(f"B) Cardio: {cardio_tipo} -> {cardio_tiempo}")
+    run_c.font.bold = True
+    run_c.font.size = Pt(10) # Tamaño pequeño
+    set_cell_bg_color(c_card, "EAEDED") # Gris muy claro
+    
+    doc.add_paragraph("") # Pequeño espacio
+
     # Grid de Imágenes
     num_ej = len(rutina_df)
     cols_visual = 4
@@ -196,7 +217,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
     
-    # Forzar altura de filas
+    # Forzar altura
     TR_HEIGHT_TWIPS = 2600 
     for row in vis_table.rows:
         tr = row._tr
@@ -377,6 +398,12 @@ with col1:
     alumno = st.text_input("Nombre del Alumno:", "")
     tipos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     sel_tipos = st.multiselect("Material:", options=tipos, default=tipos)
+    
+    # NUEVO SELECTOR DE CARDIO
+    cardio_seleccion = st.selectbox(
+        "Todos los días cardio:", 
+        ["Bicicleta", "Cinta de Correr", "Step", "Remo de cardio"]
+    )
 
 with col2:
     objetivo = st.selectbox("Objetivo:", ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"])
@@ -384,9 +411,12 @@ with col2:
     intensidad_seleccionada = 0
     reps_seleccionadas = ""
     descanso_seleccionado = ""
+    cardio_duracion = "" # Variable nueva para cardio
     
     if objetivo == "Hipertrofia Muscular":
         st.info("Rango: 1-6 Reps | Intensidad ≥ 85%")
+        cardio_duracion = "10-15 min de cardio" # Regla Cardio
+        
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100])
@@ -398,6 +428,8 @@ with col2:
             
     elif objetivo == "Definición Muscular":
         st.info("Rango: 6-12 Reps | Intensidad 60-85%")
+        cardio_duracion = "50-55 min de cardio" # Regla Cardio
+        
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75, 80, 85])
@@ -409,6 +441,8 @@ with col2:
             
     elif objetivo == "Resistencia Muscular":
         st.info("Rango: 13-20 Reps | Intensidad < 60%")
+        cardio_duracion = "Más de 30 min de cardio" # Regla Cardio
+        
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 55, 50, 45, 40])
@@ -489,8 +523,9 @@ with col_gen:
             titulo_doc = sel_tipos[0]
         else:
             titulo_doc = "GENERAL"
-            
-        docx = generar_word_final(df, objetivo, alumno, titulo_doc, f"{intensidad_seleccionada}%")
+        
+        # PASAMOS LOS NUEVOS PARÁMETROS DE CARDIO
+        docx = generar_word_final(df, objetivo, alumno, titulo_doc, f"{intensidad_seleccionada}%", cardio_seleccion, cardio_duracion)
         
         st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%)")
         st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
