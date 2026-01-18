@@ -95,8 +95,8 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (CON NUEVA TABLA CARDIO) ---
-def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo):
+# --- GENERADOR WORD (ACTUALIZADO CON ESTIRAMIENTOS) ---
+def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo):
     doc = Document()
     
     # 1. Configuración Página A4 Horizontal
@@ -185,31 +185,29 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
-    # --- NUEVA TABLA DE CARDIO (Pequeña, 2 Columnas) ---
+    # TABLA CARDIO
     cardio_table = doc.add_table(rows=1, cols=2)
     cardio_table.style = 'Table Grid'
     
-    # Columna A: Calentamiento
     c_warm = cardio_table.cell(0,0)
     p_warm = c_warm.paragraphs[0]
     p_warm.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_w = p_warm.add_run("A) Calentamiento de 5 minutos de Duración")
     run_w.font.bold = True
-    run_w.font.size = Pt(10) # Tamaño pequeño
-    set_cell_bg_color(c_warm, "EAEDED") # Gris muy claro
+    run_w.font.size = Pt(10)
+    set_cell_bg_color(c_warm, "EAEDED") 
     
-    # Columna B: Cardio Específico
     c_card = cardio_table.cell(0,1)
     p_card = c_card.paragraphs[0]
     p_card.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_c = p_card.add_run(f"B) Cardio: {cardio_tipo} -> {cardio_tiempo}")
     run_c.font.bold = True
-    run_c.font.size = Pt(10) # Tamaño pequeño
-    set_cell_bg_color(c_card, "EAEDED") # Gris muy claro
+    run_c.font.size = Pt(10) 
+    set_cell_bg_color(c_card, "EAEDED") 
     
-    doc.add_paragraph("") # Pequeño espacio
+    doc.add_paragraph("")
 
-    # Grid de Imágenes
+    # Grid de Imágenes (Rutina Principal)
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -217,7 +215,7 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
     
-    # Forzar altura
+    # Altura forzada
     TR_HEIGHT_TWIPS = 2600 
     for row in vis_table.rows:
         tr = row._tr
@@ -288,11 +286,56 @@ def generar_word_final(rutina_df, objetivo, alumno, titulo_material, intensidad_
 
     doc.add_paragraph("\n")
 
-    # Título Sección 3
-    h3 = doc.add_heading(level=1)
-    run_h3 = h3.add_run('3. Percepción del Esfuerzo (RPE)')
-    run_h3.font.size = Pt(18)
-    run_h3.font.color.rgb = RGBColor(44, 62, 80)
+    # ================= SECCIÓN 3: ESTIRAMIENTOS (NUEVA) =================
+    
+    if lista_estiramientos:
+        h3 = doc.add_heading(level=1)
+        run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
+        run_h3.font.size = Pt(18)
+        run_h3.font.color.rgb = RGBColor(44, 62, 80)
+
+        # Grid de Estiramientos (Mismo estilo que Guía Visual)
+        num_est = len(lista_estiramientos)
+        cols_est = 4
+        rows_est = (num_est + cols_est - 1) // cols_est
+        
+        est_table = doc.add_table(rows=rows_est, cols=cols_est)
+        est_table.style = 'Table Grid'
+        
+        # Iterar sobre la lista de objetos de estiramiento
+        for i, item_est in enumerate(lista_estiramientos):
+            r = i // cols_est
+            c = i % cols_est
+            cell = est_table.cell(r, c)
+            p = cell.paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            ruta_img, msg = encontrar_imagen_recursiva(item_est['imagen'])
+            
+            if ruta_img:
+                try:
+                    run = p.add_run()
+                    # Imágenes de estiramientos un poco más pequeñas si se quiere
+                    run.add_picture(ruta_img, width=Inches(1.8), height=Inches(1.2))
+                    p.add_run("\n")
+                except Exception:
+                    p.add_run(f"[Error Fichero]\n")
+            else:
+                p.add_run(f"\n[FOTO NO DISPONIBLE]\n")
+                
+            run_nom = p.add_run(item_est['nombre'])
+            run_nom.font.bold = True
+            run_nom.font.size = Pt(9)
+        
+        doc.add_paragraph("\n")
+
+    # ================= SECCIÓN 4: BORG (Renombrada) =================
+
+    # Título Sección 4
+    h4 = doc.add_heading(level=1)
+    run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE)')
+    run_h4.font.size = Pt(18)
+    run_h4.font.color.rgb = RGBColor(44, 62, 80)
 
     # Tabla Borg
     borg_table = doc.add_table(rows=3, cols=5)
@@ -396,10 +439,13 @@ elif isinstance(DB_EJERCICIOS, str):
 col1, col2 = st.columns(2)
 with col1:
     alumno = st.text_input("Nombre del Alumno:", "")
-    tipos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
-    sel_tipos = st.multiselect("Material:", options=tipos, default=tipos)
+    # FILTRO: EXCLUIMOS LOS ESTIRAMIENTOS DE LA LISTA DE MATERIAL PRINCIPAL
+    tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
+    tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
-    # NUEVO SELECTOR DE CARDIO
+    sel_tipos = st.multiselect("Material de Entrenamiento:", options=tipos_entreno, default=tipos_entreno)
+    
+    # CARDIO
     cardio_seleccion = st.selectbox(
         "Todos los días cardio:", 
         ["Bicicleta", "Cinta de Correr", "Step", "Remo de cardio"]
@@ -411,11 +457,11 @@ with col2:
     intensidad_seleccionada = 0
     reps_seleccionadas = ""
     descanso_seleccionado = ""
-    cardio_duracion = "" # Variable nueva para cardio
+    cardio_duracion = "" 
     
     if objetivo == "Hipertrofia Muscular":
         st.info("Rango: 1-6 Reps | Intensidad ≥ 85%")
-        cardio_duracion = "10-15 min de cardio" # Regla Cardio
+        cardio_duracion = "10-15 min de cardio" 
         
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
@@ -428,7 +474,7 @@ with col2:
             
     elif objetivo == "Definición Muscular":
         st.info("Rango: 6-12 Reps | Intensidad 60-85%")
-        cardio_duracion = "50-55 min de cardio" # Regla Cardio
+        cardio_duracion = "50-55 min de cardio" 
         
         col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
@@ -441,7 +487,7 @@ with col2:
             
     elif objetivo == "Resistencia Muscular":
         st.info("Rango: 13-20 Reps | Intensidad < 60%")
-        cardio_duracion = "Más de 30 min de cardio" # Regla Cardio
+        cardio_duracion = "Más de 30 min de cardio" 
         
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
@@ -495,9 +541,35 @@ for i, ej in enumerate(seleccionados_data):
     with cols[i%3]:
         rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5)
 
+# --- NUEVA SECCIÓN: ESTIRAMIENTOS ---
+st.markdown("---")
+st.subheader("Vuelta a la Calma: Estiramientos")
+
+# Filtramos solo los que son de tipo 'estiramiento' (case insensitive search)
+pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo']).lower()]
+nombres_est = [e['nombre'] for e in pool_estiramientos]
+
+if pool_estiramientos:
+    # Selector de cantidad
+    num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4)
+    
+    # Multiselect
+    seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select)
+    
+    # Rellenar objetos completos
+    estiramientos_finales = []
+    for nom in seleccion_est:
+        estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
+else:
+    st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
+    estiramientos_finales = []
+
+
+# --- BOTONES DE ACCIÓN ---
 col_gen, col_reset = st.columns([3, 1])
 
 with col_gen:
+    st.write("") # Espacio
     if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True):
         rutina_export = []
         
@@ -524,10 +596,18 @@ with col_gen:
         else:
             titulo_doc = "GENERAL"
         
-        # PASAMOS LOS NUEVOS PARÁMETROS DE CARDIO
-        docx = generar_word_final(df, objetivo, alumno, titulo_doc, f"{intensidad_seleccionada}%", cardio_seleccion, cardio_duracion)
+        docx = generar_word_final(
+            rutina_df=df, 
+            lista_estiramientos=estiramientos_finales, # Pasamos la lista nueva
+            objetivo=objetivo, 
+            alumno=alumno, 
+            titulo_material=titulo_doc, 
+            intensidad_str=f"{intensidad_seleccionada}%", 
+            cardio_tipo=cardio_seleccion, 
+            cardio_tiempo=cardio_duracion
+        )
         
-        st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%)")
+        st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
         st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 with col_reset:
