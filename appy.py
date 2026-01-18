@@ -83,20 +83,15 @@ def cargar_ejercicios():
             df = pd.read_excel("DB_EJERCICIOS.xlsx")
             df.columns = df.columns.str.strip().str.lower()
             
-            # Normalizar nombre columna
             if 'nombre' not in df.columns:
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
             
-            # Asegurar columnas existen
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
             
             # CORRECCIÓN AUTOMÁTICA DE "Olimpica" -> "Olímpica"
-            # Esto soluciona el problema de categorías duplicadas
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
-            
-            # Limpieza general de espacios
             df['tipo'] = df['tipo'].str.strip()
             
             df = df.fillna("")
@@ -533,26 +528,34 @@ with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.joi
 nombres_fil = [e['nombre'] for e in ej_filtrados]
 seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej)
 
+# --- CHECKBOX PARA EVITAR RELLENO AUTOMÁTICO ---
+rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios (si no seleccionas suficientes)", value=True)
+
 seleccionados_data = []
 nombres_finales = seleccion.copy()
-if len(nombres_finales) < num_ej:
+
+# Lógica de relleno (Solo si el checkbox está activo)
+if rellenar_auto and len(nombres_finales) < num_ej:
     pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
     needed = num_ej - len(nombres_finales)
     if needed <= len(pool):
         extras = random.sample(pool, needed)
         nombres_finales.extend([x['nombre'] for x in extras])
-        
-# CORRECCIÓN VITAL: Reconstruir 'seleccionados_data' con los objetos correctos
-# para evitar discrepancias en la vista previa "Has seleccionado"
+
+# Reconstruir la lista de objetos completa basada en nombres_finales
 seleccionados_data = []
 for nom in nombres_finales:
-    # Busca el ejercicio en la lista filtrada
     obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
     if obj_ejercicio:
         seleccionados_data.append(obj_ejercicio)
 
 st.markdown("---")
-st.caption("Has seleccionado (o completado automáticamente):")
+# Cambio de texto para que tenga sentido con o sin relleno
+if rellenar_auto:
+    st.caption("Has seleccionado (o se ha completado automáticamente):")
+else:
+    st.caption("Has seleccionado estrictamente:")
+    
 cols_prev = st.columns(6)
 for i, item in enumerate(seleccionados_data):
     with cols_prev[i % 6]:
@@ -591,9 +594,18 @@ if pool_estiramientos:
     num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4)
     seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select)
     
+    # Relleno automático también para estiramientos (opcional, pero consistente)
+    estiramientos_finales_nombres = seleccion_est.copy()
+    if len(estiramientos_finales_nombres) < num_est_select:
+        pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
+        needed_est = num_est_select - len(estiramientos_finales_nombres)
+        if needed_est <= len(pool_est):
+             estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
+
     estiramientos_finales = []
-    for nom in seleccion_est:
-        estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
+    for nom in estiramientos_finales_nombres:
+         estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
+
 else:
     st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
     estiramientos_finales = []
