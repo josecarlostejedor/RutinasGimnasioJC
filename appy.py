@@ -87,7 +87,6 @@ def cargar_ejercicios():
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
             
-            # Normalización
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.strip()
@@ -101,7 +100,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD ---
+# --- GENERADOR WORD (AJUSTE ESTÉTICO IMÁGENES) ---
 def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo):
     doc = Document()
     section = doc.sections[0]
@@ -204,12 +203,15 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     
     doc.add_paragraph("")
 
+    # Grid Images (MEJORA ESTÉTICA)
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
-    TR_HEIGHT_TWIPS = 2600 
+    
+    # Aumentamos altura de fila para dar aire (2800 twips ~ 1.95 pulgadas)
+    TR_HEIGHT_TWIPS = 2800 
     for row in vis_table.rows:
         tr = row._tr
         trPr = tr.get_or_add_trPr()
@@ -224,17 +226,22 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         cell = vis_table.cell(r, c)
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
         ruta_img, msg = encontrar_imagen_recursiva(row_data['Imagen'])
         if ruta_img:
             try:
                 run = p.add_run()
-                run.add_picture(ruta_img, width=Inches(2.0), height=Inches(1.35))
-                p.add_run("\n")
+                # TAMAÑO UNIFICADO Y MÁS GRANDE PARA LLENAR CELDA SIN TOCAR BORDES
+                run.add_picture(ruta_img, width=Inches(2.4), height=Inches(1.55))
+                # Espaciado de seguridad para no tocar líneas
+                p.paragraph_format.space_before = Pt(4)
+                p.paragraph_format.space_after = Pt(4)
             except:
                 p.add_run(f"[Error]\n")
         else:
             p.add_run(f"\n[FOTO NO DISPONIBLE]\n")
-        run_nom = p.add_run(row_data['Ejercicio'])
+        
+        run_nom = p.add_run("\n" + row_data['Ejercicio'])
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
@@ -269,6 +276,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
+    # Estiramientos
     if lista_estiramientos:
         h3 = doc.add_heading(level=1)
         run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
@@ -279,6 +287,16 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         rows_est = (num_est + cols_est - 1) // cols_est
         est_table = doc.add_table(rows=rows_est, cols=cols_est)
         est_table.style = 'Table Grid'
+        
+        # Ajuste de altura para estiramientos también
+        for row in est_table.rows:
+            tr = row._tr
+            trPr = tr.get_or_add_trPr()
+            trHeight = OxmlElement('w:trHeight')
+            trHeight.set(qn('w:val'), str(2600))
+            trHeight.set(qn('w:hRule'), "atLeast")
+            trPr.append(trHeight)
+
         for i, item_est in enumerate(lista_estiramientos):
             r = i // cols_est
             c = i % cols_est
@@ -289,13 +307,15 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             if ruta_img:
                 try:
                     run = p.add_run()
-                    run.add_picture(ruta_img, width=Inches(1.8), height=Inches(1.2))
-                    p.add_run("\n")
+                    # Estiramientos un poco más pequeños pero uniformes
+                    run.add_picture(ruta_img, width=Inches(2.2), height=Inches(1.4))
+                    p.paragraph_format.space_before = Pt(3)
+                    p.paragraph_format.space_after = Pt(3)
                 except:
                     p.add_run(f"[Error]\n")
             else:
                 p.add_run(f"\n[FOTO NO DISPONIBLE]\n")
-            run_nom = p.add_run(item_est['nombre'])
+            run_nom = p.add_run("\n" + item_est['nombre'])
             run_nom.font.bold = True
             run_nom.font.size = Pt(9)
         doc.add_paragraph("\n")
@@ -390,11 +410,10 @@ with col1:
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
-    # --- CAMBIO: DEFAULT=None PARA QUE EMPIECE VACÍO ---
     sel_tipos = st.multiselect(
         "Material de Entrenamiento (Elige para empezar):", 
         options=tipos_entreno, 
-        default=None, # <--- AQUÍ ESTÁ EL CAMBIO
+        default=None, 
         key=get_key("sel_material")
     )
     
@@ -460,163 +479,4 @@ with col2:
         with col_rh1:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [20, 30, 40, 50, 60, 70], key=get_key("int_rehab"))
         with col_rh2:
-            val_reps = st.selectbox("Repeticiones:", [8, 10, 12, 15, 20, 25], key=get_key("reps_rehab"))
-            reps_seleccionadas = str(val_reps)
-        with col_rh3:
-            descanso_seleccionado = st.selectbox("Descanso:", ["30 seg", "45 seg", "1 min", "2 min"], key=get_key("desc_rehab"))
-
-if sel_tipos:
-    ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
-    
-    # LÓGICA DE DEFAULT
-    default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
-    max_val = min(12, len(ej_filtrados)) 
-    
-    if default_val > max_val: default_val = max_val
-    if default_val < 1: default_val = 1
-    
-    num_ej = st.slider("Cantidad de Ejercicios:", 1, 12, default_val, key=get_key("slider_ej"))
-else:
-    st.warning("👈 Selecciona primero el Material de Entrenamiento para ver los ejercicios.")
-    st.stop()
-
-st.subheader("Selección de Ejercicios")
-
-if sel_tipos: # Solo mostrar si hay material seleccionado
-    with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.join(sel_tipos)})"):
-        cols_galeria = st.columns(6)
-        for i, ej in enumerate(ej_filtrados):
-            with cols_galeria[i % 6]:
-                ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
-                if ruta:
-                    st.image(ruta, caption=ej['nombre'], use_container_width=True)
-                else:
-                    st.caption(f"❌ {ej['nombre']}")
-
-    nombres_fil = [e['nombre'] for e in ej_filtrados]
-    seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej, key=get_key("sel_ej"))
-
-    rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios", value=True, key=get_key("check_auto"))
-
-    seleccionados_data = []
-    nombres_finales = seleccion.copy()
-
-    if rellenar_auto and len(nombres_finales) < num_ej:
-        pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
-        needed = num_ej - len(nombres_finales)
-        if needed <= len(pool):
-            extras = random.sample(pool, needed)
-            nombres_finales.extend([x['nombre'] for x in extras])
-
-    seleccionados_data = []
-    for nom in nombres_finales:
-        obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
-        if obj_ejercicio:
-            seleccionados_data.append(obj_ejercicio)
-
-    st.markdown("---")
-    if rellenar_auto:
-        st.caption("Has seleccionado (o se ha completado automáticamente):")
-    else:
-        st.caption("Has seleccionado estrictamente:")
-        
-    cols_prev = st.columns(6)
-    for i, item in enumerate(seleccionados_data):
-        with cols_prev[i % 6]:
-            ruta, msg = encontrar_imagen_recursiva(item['imagen'])
-            if ruta:
-                st.image(ruta, caption=item['nombre'], use_container_width=True)
-            else:
-                st.error(f"❌ {item['imagen']}")
-
-    st.subheader("Cargas de Entrenamiento")
-    st.write(f"Introduce el 1RM actual. Se calculará el **{intensidad_seleccionada}%** automáticamente.")
-    cols = st.columns(3)
-    rm_inputs = {}
-    for i, ej in enumerate(seleccionados_data):
-        with cols[i%3]:
-            rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5, key=get_key(f"rm_{ej['nombre']}"))
-
-    st.markdown("---")
-    st.subheader("Vuelta a la Calma: Estiramientos")
-
-    pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo']).lower()]
-    nombres_est = [e['nombre'] for e in pool_estiramientos]
-
-    if pool_estiramientos:
-        with st.expander("🧘 Ver Galería Visual de Estiramientos disponibles"):
-            cols_est_gal = st.columns(6)
-            for i, ej in enumerate(pool_estiramientos):
-                with cols_est_gal[i % 6]:
-                    ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
-                    if ruta:
-                        st.image(ruta, caption=ej['nombre'], use_container_width=True)
-                    else:
-                        st.caption(f"❌ {ej['nombre']}")
-
-        num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
-        seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
-        
-        estiramientos_finales_nombres = seleccion_est.copy()
-        if len(estiramientos_finales_nombres) < num_est_select:
-            pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
-            needed_est = num_est_select - len(estiramientos_finales_nombres)
-            if needed_est <= len(pool_est):
-                 estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
-
-        estiramientos_finales = []
-        for nom in estiramientos_finales_nombres:
-             estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
-
-    else:
-        st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
-        estiramientos_finales = []
-
-    col_gen, col_reset = st.columns([3, 1])
-
-    with col_gen:
-        st.write("")
-        if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True, key=get_key("btn_gen")):
-            rutina_export = []
-            for item in seleccionados_data:
-                rm = rm_inputs[item['nombre']]
-                factor = intensidad_seleccionada / 100.0
-                peso_real = int(rm * factor)
-                rutina_export.append({
-                    "Ejercicio": item['nombre'],
-                    "Imagen": item['imagen'],
-                    "Reps": reps_seleccionadas,
-                    "Peso": peso_real,
-                    "Descanso": descanso_seleccionado,
-                    "Intensidad_Real": f"{intensidad_seleccionada}%"
-                })
-            df = pd.DataFrame(rutina_export)
-            
-            if len(sel_tipos) > 1:
-                titulo_doc = "MIXTO"
-            elif len(sel_tipos) == 1:
-                titulo_doc = sel_tipos[0]
-            else:
-                titulo_doc = "GENERAL"
-            
-            docx = generar_word_final(
-                rutina_df=df, 
-                lista_estiramientos=estiramientos_finales, 
-                objetivo=objetivo, 
-                alumno=alumno, 
-                titulo_material=titulo_doc, 
-                intensidad_str=f"{intensidad_seleccionada}%", 
-                cardio_tipo=cardio_seleccion, 
-                cardio_tiempo=cardio_duracion
-            )
-            st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
-            st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-
-    # --- LÓGICA DE REINICIO ---
-    def reset_app():
-        st.session_state.reset_counter += 1
-        st.cache_data.clear()
-
-    with col_reset:
-        st.write("")
-        st.button("🔄 Reiniciar", use_container_width=True, on_click=reset_app)
+            val_reps = st.selectbox("Repeticiones
