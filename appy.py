@@ -14,7 +14,7 @@ from datetime import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Entrenador Pro Científico", layout="wide")
 
-# --- GESTIÓN DE ESTADO (Reinicio) ---
+# --- GESTIÓN DE ESTADO ---
 if 'reset_counter' not in st.session_state:
     st.session_state.reset_counter = 0
 
@@ -390,11 +390,11 @@ with col1:
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
-    # RESTAURADO: SELECCIÓN POR DEFECTO PARA QUE SALGAN LAS RMS AUTOMÁTICAMENTE
+    # --- CAMBIO: DEFAULT=None PARA QUE EMPIECE VACÍO ---
     sel_tipos = st.multiselect(
         "Material de Entrenamiento (Elige para empezar):", 
         options=tipos_entreno, 
-        default=tipos_entreno, # <--- SELECCIONA TODO POR DEFECTO PARA QUE LA APP MUESTRE DATOS
+        default=None, # <--- AQUÍ ESTÁ EL CAMBIO
         key=get_key("sel_material")
     )
     
@@ -468,7 +468,7 @@ with col2:
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
     
-    # MODIFICACIÓN SOLICITADA: RANGO 1-12 EN TODO
+    # LÓGICA DE DEFAULT
     default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
     max_val = min(12, len(ej_filtrados)) 
     
@@ -482,143 +482,141 @@ else:
 
 st.subheader("Selección de Ejercicios")
 
-with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.join(sel_tipos)})"):
-    cols_galeria = st.columns(6)
-    for i, ej in enumerate(ej_filtrados):
-        with cols_galeria[i % 6]:
-            ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
-            if ruta:
-                st.image(ruta, caption=ej['nombre'], use_container_width=True)
-            else:
-                st.caption(f"❌ {ej['nombre']}")
-
-nombres_fil = [e['nombre'] for e in ej_filtrados]
-seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej, key=get_key("sel_ej"))
-
-rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios", value=True, key=get_key("check_auto"))
-
-seleccionados_data = []
-nombres_finales = seleccion.copy()
-
-if rellenar_auto and len(nombres_finales) < num_ej:
-    pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
-    needed = num_ej - len(nombres_finales)
-    if needed <= len(pool):
-        extras = random.sample(pool, needed)
-        nombres_finales.extend([x['nombre'] for x in extras])
-
-seleccionados_data = []
-for nom in nombres_finales:
-    obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
-    if obj_ejercicio:
-        seleccionados_data.append(obj_ejercicio)
-
-st.markdown("---")
-if rellenar_auto:
-    st.caption("Has seleccionado (o se ha completado automáticamente):")
-else:
-    st.caption("Has seleccionado estrictamente:")
-    
-cols_prev = st.columns(6)
-for i, item in enumerate(seleccionados_data):
-    with cols_prev[i % 6]:
-        ruta, msg = encontrar_imagen_recursiva(item['imagen'])
-        if ruta:
-            st.image(ruta, caption=item['nombre'], use_container_width=True)
-        else:
-            st.error(f"❌ {item['imagen']}")
-
-st.subheader("Cargas de Entrenamiento")
-st.write(f"Introduce el 1RM actual. Se calculará el **{intensidad_seleccionada}%** automáticamente.")
-cols = st.columns(3)
-rm_inputs = {}
-for i, ej in enumerate(seleccionados_data):
-    with cols[i%3]:
-        # CAMPOS DE RM MANUAL
-        rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5, key=get_key(f"rm_{ej['nombre']}"))
-
-st.markdown("---")
-st.subheader("Vuelta a la Calma: Estiramientos")
-
-pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo']).lower()]
-nombres_est = [e['nombre'] for e in pool_estiramientos]
-
-if pool_estiramientos:
-    with st.expander("🧘 Ver Galería Visual de Estiramientos disponibles"):
-        cols_est_gal = st.columns(6)
-        for i, ej in enumerate(pool_estiramientos):
-            with cols_est_gal[i % 6]:
+if sel_tipos: # Solo mostrar si hay material seleccionado
+    with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.join(sel_tipos)})"):
+        cols_galeria = st.columns(6)
+        for i, ej in enumerate(ej_filtrados):
+            with cols_galeria[i % 6]:
                 ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
                 if ruta:
                     st.image(ruta, caption=ej['nombre'], use_container_width=True)
                 else:
                     st.caption(f"❌ {ej['nombre']}")
 
-    # MODIFICACIÓN SOLICITADA: RANGO 1-12 EN ESTIRAMIENTOS
-    num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
-    
-    seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
-    
-    estiramientos_finales_nombres = seleccion_est.copy()
-    if len(estiramientos_finales_nombres) < num_est_select:
-        pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
-        needed_est = num_est_select - len(estiramientos_finales_nombres)
-        if needed_est <= len(pool_est):
-             estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
+    nombres_fil = [e['nombre'] for e in ej_filtrados]
+    seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej, key=get_key("sel_ej"))
 
-    estiramientos_finales = []
-    for nom in estiramientos_finales_nombres:
-         estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
+    rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios", value=True, key=get_key("check_auto"))
 
-else:
-    st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
-    estiramientos_finales = []
+    seleccionados_data = []
+    nombres_finales = seleccion.copy()
 
-col_gen, col_reset = st.columns([3, 1])
+    if rellenar_auto and len(nombres_finales) < num_ej:
+        pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
+        needed = num_ej - len(nombres_finales)
+        if needed <= len(pool):
+            extras = random.sample(pool, needed)
+            nombres_finales.extend([x['nombre'] for x in extras])
 
-with col_gen:
-    st.write("")
-    if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True, key=get_key("btn_gen")):
-        rutina_export = []
-        for item in seleccionados_data:
-            rm = rm_inputs[item['nombre']]
-            factor = intensidad_seleccionada / 100.0
-            peso_real = int(rm * factor)
-            rutina_export.append({
-                "Ejercicio": item['nombre'],
-                "Imagen": item['imagen'],
-                "Reps": reps_seleccionadas,
-                "Peso": peso_real,
-                "Descanso": descanso_seleccionado,
-                "Intensidad_Real": f"{intensidad_seleccionada}%"
-            })
-        df = pd.DataFrame(rutina_export)
+    seleccionados_data = []
+    for nom in nombres_finales:
+        obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
+        if obj_ejercicio:
+            seleccionados_data.append(obj_ejercicio)
+
+    st.markdown("---")
+    if rellenar_auto:
+        st.caption("Has seleccionado (o se ha completado automáticamente):")
+    else:
+        st.caption("Has seleccionado estrictamente:")
         
-        if len(sel_tipos) > 1:
-            titulo_doc = "MIXTO"
-        elif len(sel_tipos) == 1:
-            titulo_doc = sel_tipos[0]
-        else:
-            titulo_doc = "GENERAL"
+    cols_prev = st.columns(6)
+    for i, item in enumerate(seleccionados_data):
+        with cols_prev[i % 6]:
+            ruta, msg = encontrar_imagen_recursiva(item['imagen'])
+            if ruta:
+                st.image(ruta, caption=item['nombre'], use_container_width=True)
+            else:
+                st.error(f"❌ {item['imagen']}")
+
+    st.subheader("Cargas de Entrenamiento")
+    st.write(f"Introduce el 1RM actual. Se calculará el **{intensidad_seleccionada}%** automáticamente.")
+    cols = st.columns(3)
+    rm_inputs = {}
+    for i, ej in enumerate(seleccionados_data):
+        with cols[i%3]:
+            rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5, key=get_key(f"rm_{ej['nombre']}"))
+
+    st.markdown("---")
+    st.subheader("Vuelta a la Calma: Estiramientos")
+
+    pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo']).lower()]
+    nombres_est = [e['nombre'] for e in pool_estiramientos]
+
+    if pool_estiramientos:
+        with st.expander("🧘 Ver Galería Visual de Estiramientos disponibles"):
+            cols_est_gal = st.columns(6)
+            for i, ej in enumerate(pool_estiramientos):
+                with cols_est_gal[i % 6]:
+                    ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
+                    if ruta:
+                        st.image(ruta, caption=ej['nombre'], use_container_width=True)
+                    else:
+                        st.caption(f"❌ {ej['nombre']}")
+
+        num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
+        seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
         
-        docx = generar_word_final(
-            rutina_df=df, 
-            lista_estiramientos=estiramientos_finales, 
-            objetivo=objetivo, 
-            alumno=alumno, 
-            titulo_material=titulo_doc, 
-            intensidad_str=f"{intensidad_seleccionada}%", 
-            cardio_tipo=cardio_seleccion, 
-            cardio_tiempo=cardio_duracion
-        )
-        st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
-        st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        estiramientos_finales_nombres = seleccion_est.copy()
+        if len(estiramientos_finales_nombres) < num_est_select:
+            pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
+            needed_est = num_est_select - len(estiramientos_finales_nombres)
+            if needed_est <= len(pool_est):
+                 estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
 
-# --- LÓGICA DE REINICIO ---
-def reset_app():
-    st.session_state.reset_counter += 1
-    st.cache_data.clear()
+        estiramientos_finales = []
+        for nom in estiramientos_finales_nombres:
+             estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
 
-with col_reset:
-    st.write("")
-    st.button("🔄 Reiniciar", use_container_width=True, on_click=reset_app)
+    else:
+        st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
+        estiramientos_finales = []
+
+    col_gen, col_reset = st.columns([3, 1])
+
+    with col_gen:
+        st.write("")
+        if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True, key=get_key("btn_gen")):
+            rutina_export = []
+            for item in seleccionados_data:
+                rm = rm_inputs[item['nombre']]
+                factor = intensidad_seleccionada / 100.0
+                peso_real = int(rm * factor)
+                rutina_export.append({
+                    "Ejercicio": item['nombre'],
+                    "Imagen": item['imagen'],
+                    "Reps": reps_seleccionadas,
+                    "Peso": peso_real,
+                    "Descanso": descanso_seleccionado,
+                    "Intensidad_Real": f"{intensidad_seleccionada}%"
+                })
+            df = pd.DataFrame(rutina_export)
+            
+            if len(sel_tipos) > 1:
+                titulo_doc = "MIXTO"
+            elif len(sel_tipos) == 1:
+                titulo_doc = sel_tipos[0]
+            else:
+                titulo_doc = "GENERAL"
+            
+            docx = generar_word_final(
+                rutina_df=df, 
+                lista_estiramientos=estiramientos_finales, 
+                objetivo=objetivo, 
+                alumno=alumno, 
+                titulo_material=titulo_doc, 
+                intensidad_str=f"{intensidad_seleccionada}%", 
+                cardio_tipo=cardio_seleccion, 
+                cardio_tiempo=cardio_duracion
+            )
+            st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
+            st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    # --- LÓGICA DE REINICIO ---
+    def reset_app():
+        st.session_state.reset_counter += 1
+        st.cache_data.clear()
+
+    with col_reset:
+        st.write("")
+        st.button("🔄 Reiniciar", use_container_width=True, on_click=reset_app)
