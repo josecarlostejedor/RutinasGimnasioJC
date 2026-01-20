@@ -14,12 +14,11 @@ from datetime import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Entrenador Pro Científico", layout="wide")
 
-# --- GESTIÓN DE ESTADO PARA REINICIO REAL (CLAVES DINÁMICAS) ---
+# --- GESTIÓN DE ESTADO PARA REINICIO REAL ---
 if 'reset_counter' not in st.session_state:
     st.session_state.reset_counter = 0
 
 def get_key(base_name):
-    """Genera una clave única basada en el contador de reinicios"""
     return f"{base_name}_{st.session_state.reset_counter}"
 
 # --- FUNCIONES AUXILIARES PARA WORD ---
@@ -87,10 +86,12 @@ def cargar_ejercicios():
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
+            
             # Corrección de tildes
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.strip()
+            
             df = df.fillna("")
             return df.to_dict('records')
         else:
@@ -380,7 +381,6 @@ with col1:
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
-    # IMPORTANTE: Default vacío (None) para obligar a seleccionar
     sel_tipos = st.multiselect(
         "Material de Entrenamiento (Elige para empezar):", 
         options=tipos_entreno, 
@@ -395,8 +395,9 @@ with col1:
     )
 
 with col2:
+    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
     objetivo = st.selectbox("Objetivo:", 
-                            ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular"], 
+                            ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Rehabilitación Muscular y Articular"], 
                             key=get_key("objetivo"))
     
     intensidad_seleccionada = 0
@@ -440,6 +441,21 @@ with col2:
         with col_r3:
             opciones_segundos = [f"{s} seg" for s in range(60, -1, -5)]
             descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos, key=get_key("desc_r"))
+
+    # NUEVO BLOQUE: REHABILITACIÓN
+    elif objetivo == "Rehabilitación Muscular y Articular":
+        st.info("Rango: (Elige las repeticiones y la intensidad de ejercicio)")
+        cardio_duracion = "Suave / Según dolor"
+        col_rh1, col_rh2, col_rh3 = st.columns(3)
+        with col_rh1:
+            # Selector flexible para Rehab
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [20, 30, 40, 50, 60, 70], key=get_key("int_rehab"))
+        with col_rh2:
+            # Selector flexible para Reps (incluye series largas)
+            val_reps = st.selectbox("Repeticiones:", [8, 10, 12, 15, 20, 25], key=get_key("reps_rehab"))
+            reps_seleccionadas = str(val_reps)
+        with col_rh3:
+            descanso_seleccionado = st.selectbox("Descanso:", ["30 seg", "45 seg", "1 min", "2 min"], key=get_key("desc_rehab"))
 
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
@@ -579,12 +595,10 @@ with col_gen:
         st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
         st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
-# --- LÓGICA DE REINICIO REAL (Callback que aumenta el contador) ---
+# --- LÓGICA DE REINICIO ---
 def reset_app():
-    # Incrementamos el contador. Esto cambiará TODAS las keys, forzando widgets nuevos y vacíos.
     st.session_state.reset_counter += 1
 
 with col_reset:
     st.write("")
-    # Este botón nunca cambia de ID para que siempre se pueda pulsar
     st.button("🔄 Reiniciar", use_container_width=True, on_click=reset_app)
