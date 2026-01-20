@@ -14,7 +14,7 @@ from datetime import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Entrenador Pro Científico", layout="wide")
 
-# --- GESTIÓN DE ESTADO ---
+# --- GESTIÓN DE ESTADO (Reinicio) ---
 if 'reset_counter' not in st.session_state:
     st.session_state.reset_counter = 0
 
@@ -390,10 +390,11 @@ with col1:
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
+    # RESTAURADO: SELECCIÓN POR DEFECTO PARA QUE SALGAN LAS RMS AUTOMÁTICAMENTE
     sel_tipos = st.multiselect(
         "Material de Entrenamiento (Elige para empezar):", 
         options=tipos_entreno, 
-        default=None, 
+        default=tipos_entreno, # <--- SELECCIONA TODO POR DEFECTO PARA QUE LA APP MUESTRE DATOS
         key=get_key("sel_material")
     )
     
@@ -404,6 +405,7 @@ with col1:
     )
 
 with col2:
+    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
     objetivo = st.selectbox("Objetivo:", 
                             ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Rehabilitación Muscular y Articular"], 
                             key=get_key("objetivo"))
@@ -466,14 +468,14 @@ with col2:
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
     
-    # LÓGICA DE DEFAULT PARA REHABILITACIÓN
+    # MODIFICACIÓN SOLICITADA: RANGO 1-12 EN TODO
     default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
-    max_val = min(10, len(ej_filtrados))
-    # Seguridad por si el filtro devuelve menos de 8
+    max_val = min(12, len(ej_filtrados)) 
+    
     if default_val > max_val: default_val = max_val
     if default_val < 1: default_val = 1
     
-    num_ej = st.slider("Cantidad de Ejercicios:", 1, max_val, default_val, key=get_key("slider_ej"))
+    num_ej = st.slider("Cantidad de Ejercicios:", 1, 12, default_val, key=get_key("slider_ej"))
 else:
     st.warning("👈 Selecciona primero el Material de Entrenamiento para ver los ejercicios.")
     st.stop()
@@ -532,6 +534,7 @@ cols = st.columns(3)
 rm_inputs = {}
 for i, ej in enumerate(seleccionados_data):
     with cols[i%3]:
+        # CAMPOS DE RM MANUAL
         rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5, key=get_key(f"rm_{ej['nombre']}"))
 
 st.markdown("---")
@@ -551,7 +554,9 @@ if pool_estiramientos:
                 else:
                     st.caption(f"❌ {ej['nombre']}")
 
-    num_est_select = st.slider("Cantidad de estiramientos:", 1, 8, 4, key=get_key("slider_est"))
+    # MODIFICACIÓN SOLICITADA: RANGO 1-12 EN ESTIRAMIENTOS
+    num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
+    
     seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
     
     estiramientos_finales_nombres = seleccion_est.copy()
