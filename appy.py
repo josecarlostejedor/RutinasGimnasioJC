@@ -14,7 +14,7 @@ from datetime import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Entrenador Pro Científico", layout="wide")
 
-# --- GESTIÓN DE ESTADO PARA REINICIO REAL ---
+# --- GESTIÓN DE ESTADO ---
 if 'reset_counter' not in st.session_state:
     st.session_state.reset_counter = 0
 
@@ -87,7 +87,7 @@ def cargar_ejercicios():
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
             
-            # Corrección de tildes
+            # Normalización
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.strip()
@@ -126,28 +126,40 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     # PÁGINA 1
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
-    head_tbl.columns[0].width = Inches(9.4) 
-    head_tbl.columns[1].width = Inches(1.2)
+    head_tbl.columns[0].width = Inches(9.8) 
+    head_tbl.columns[1].width = Inches(1.0)
     
     c1 = head_tbl.cell(0,0)
     p = c1.paragraphs[0]
     r1 = p.add_run(f"PROGRAMA DE ENTRENAMIENTO DE: {titulo_material.upper()}\n")
     r1.font.bold = True
-    r1.font.size = Pt(14) 
+    r1.font.size = Pt(12) 
     r1.font.color.rgb = RGBColor(41, 128, 185)
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
+    
+    font_size_meta = Pt(9)
     r_obj_label = p.add_run("OBJETIVO: ")
     r_obj_label.font.bold = True
-    p.add_run(f"{objetivo}")
-    p.add_run("\t   ") 
+    r_obj_label.font.size = font_size_meta
+    r_obj_val = p.add_run(f"{objetivo}")
+    r_obj_val.font.size = font_size_meta
+    
+    p.add_run("   |   ").font.size = font_size_meta 
+    
     r_int_label = p.add_run("INTENSIDAD DE TRABAJO: ")
     r_int_label.font.bold = True
-    p.add_run(f"({intensidad_str})")
-    p.add_run("\t   ") 
+    r_int_label.font.size = font_size_meta
+    r_int_val = p.add_run(f"({intensidad_str})")
+    r_int_val.font.size = font_size_meta
+    
+    p.add_run("   |   ").font.size = font_size_meta 
+    
     r_alu_label = p.add_run("ALUMNO/A: ")
     r_alu_label.font.bold = True
-    p.add_run(f"{nombre_mostrar.upper()}")
+    r_alu_label.font.size = font_size_meta
+    r_alu_val = p.add_run(f"{nombre_mostrar.upper()}")
+    r_alu_val.font.size = font_size_meta
 
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
@@ -173,7 +185,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
-    # Cardio Table
     cardio_table = doc.add_table(rows=1, cols=2)
     cardio_table.style = 'Table Grid'
     c_warm = cardio_table.cell(0,0)
@@ -193,7 +204,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     
     doc.add_paragraph("")
 
-    # Grid Images
     num_ej = len(rutina_df)
     cols_visual = 4
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
@@ -259,7 +269,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
-    # Estiramientos
     if lista_estiramientos:
         h3 = doc.add_heading(level=1)
         run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
@@ -291,7 +300,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             run_nom.font.size = Pt(9)
         doc.add_paragraph("\n")
 
-    # Borg
     h4 = doc.add_heading(level=1)
     run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE)')
     run_h4.font.size = Pt(18)
@@ -378,6 +386,7 @@ col1, col2 = st.columns(2)
 with col1:
     alumno = st.text_input("Nombre del Alumno:", "", key=get_key("alumno"))
     
+    # 1. OBTENER TIPOS
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
@@ -395,7 +404,6 @@ with col1:
     )
 
 with col2:
-    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
     objetivo = st.selectbox("Objetivo:", 
                             ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Rehabilitación Muscular y Articular"], 
                             key=get_key("objetivo"))
@@ -442,16 +450,14 @@ with col2:
             opciones_segundos = [f"{s} seg" for s in range(60, -1, -5)]
             descanso_seleccionado = st.selectbox("Descanso:", opciones_segundos, key=get_key("desc_r"))
 
-    # NUEVO BLOQUE: REHABILITACIÓN
+    # BLOQUE REHABILITACIÓN
     elif objetivo == "Rehabilitación Muscular y Articular":
         st.info("Rango: (Elige las repeticiones y la intensidad de ejercicio)")
         cardio_duracion = "Suave / Según dolor"
         col_rh1, col_rh2, col_rh3 = st.columns(3)
         with col_rh1:
-            # Selector flexible para Rehab
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [20, 30, 40, 50, 60, 70], key=get_key("int_rehab"))
         with col_rh2:
-            # Selector flexible para Reps (incluye series largas)
             val_reps = st.selectbox("Repeticiones:", [8, 10, 12, 15, 20, 25], key=get_key("reps_rehab"))
             reps_seleccionadas = str(val_reps)
         with col_rh3:
@@ -459,7 +465,15 @@ with col2:
 
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
-    num_ej = st.slider("Cantidad de Ejercicios:", 1, min(10, len(ej_filtrados)), 6, key=get_key("slider_ej"))
+    
+    # LÓGICA DE DEFAULT PARA REHABILITACIÓN
+    default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
+    max_val = min(10, len(ej_filtrados))
+    # Seguridad por si el filtro devuelve menos de 8
+    if default_val > max_val: default_val = max_val
+    if default_val < 1: default_val = 1
+    
+    num_ej = st.slider("Cantidad de Ejercicios:", 1, max_val, default_val, key=get_key("slider_ej"))
 else:
     st.warning("👈 Selecciona primero el Material de Entrenamiento para ver los ejercicios.")
     st.stop()
@@ -598,6 +612,7 @@ with col_gen:
 # --- LÓGICA DE REINICIO ---
 def reset_app():
     st.session_state.reset_counter += 1
+    st.cache_data.clear()
 
 with col_reset:
     st.write("")
