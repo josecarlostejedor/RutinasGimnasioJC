@@ -75,7 +75,7 @@ def encontrar_imagen_recursiva(nombre_objetivo):
                     return os.path.join(root, filename), "Por Nombre"
     return None, f"No encontrado"
 
-# --- CARGAR EXCEL ---
+# --- CARGAR EXCEL (CON CORRECCIONES TIPOGRÁFICAS) ---
 @st.cache_data
 def cargar_ejercicios():
     try:
@@ -87,9 +87,18 @@ def cargar_ejercicios():
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
             
-            # Normalización
+            # --- CORRECCIONES AUTOMÁTICAS DE TEXTO ---
+            # 1. Olímpica
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
+            
+            # 2. Rehabilitación (Acento)
+            df['tipo'] = df['tipo'].str.replace('Rehabilitacion', 'Rehabilitación', regex=False)
+            
+            # 3. Rotuliana (Corrección de Rotualiana)
+            df['tipo'] = df['tipo'].str.replace('Rotualiana', 'Rotuliana', regex=False)
+            
+            # Limpieza final de espacios
             df['tipo'] = df['tipo'].str.strip()
             
             df = df.fillna("")
@@ -414,6 +423,7 @@ with col1:
     )
 
 with col2:
+    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
     objetivo = st.selectbox("Objetivo:", 
                             ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Rehabilitación Muscular y Articular"], 
                             key=get_key("objetivo"))
@@ -476,7 +486,7 @@ with col2:
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
     
-    # DEFAULT & MAX
+    # LÓGICA DE DEFAULT
     default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
     max_val = min(12, len(ej_filtrados)) 
     
