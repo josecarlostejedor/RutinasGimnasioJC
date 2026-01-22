@@ -21,7 +21,7 @@ if 'reset_counter' not in st.session_state:
 def get_key(base_name):
     return f"{base_name}_{st.session_state.reset_counter}"
 
-# --- DATOS TEÓRICOS DE LOS OBJETIVOS (TEXTOS WORD) ---
+# --- DATOS TEÓRICOS DE LOS OBJETIVOS ---
 INFO_OBJETIVOS = {
     "Fuerza Máxima": """1️⃣ FUERZA MÁXIMA
 🎯 Objetivo
@@ -248,7 +248,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     
     nombre_mostrar = alumno if alumno.strip() else "ALUMNO"
     
-    font_size_meta = Pt(10) # 10pt para que quepa bien
+    font_size_meta = Pt(10) 
     r_obj_label = p.add_run("OBJETIVO: ")
     r_obj_label.font.bold = True
     r_obj_label.font.size = font_size_meta
@@ -373,7 +373,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         row_cells[0].text = str(idx + 1)
         row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
         row_cells[1].text = row_data['Ejercicio']
-        # USAMOS LAS SERIES CALCULADAS
         row_cells[2].text = f"{series_str} x {row_data['Reps']}"
         row_cells[3].text = f"{row_data['Peso']} kg"
         row_cells[4].text = row_data['Descanso']
@@ -469,14 +468,9 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_page_break()
 
-    # --- SECCIÓN 5: MARCO TEÓRICO (NUEVA) ---
+    # --- SECCIÓN 5: MARCO TEÓRICO ---
     h5 = doc.add_heading(level=1)
-    # Título dinámico según el objetivo elegido, sacado del diccionario
-    # Parseamos la primera línea del texto para usarla como título si queremos, o usamos una genérica
-    # Usaremos el título dentro del texto que ya tiene el emoji
-    
     texto_teorico = INFO_OBJETIVOS.get(objetivo, "Información no disponible.")
-    # Escribimos el texto preservando saltos de línea
     doc.add_paragraph(texto_teorico)
     
     doc.add_paragraph("\n")
@@ -487,16 +481,14 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_h6.font.size = Pt(16)
     run_h6.font.color.rgb = RGBColor(44, 62, 80)
     
-    # Intentar cargar la imagen de resumen
-    # Se asume que el usuario subirá "tabla_resumen.png" o "tabla_resumen.jpg"
     ruta_resumen, msg = encontrar_imagen_recursiva("tabla_resumen") 
     if ruta_resumen:
         try:
-            doc.add_picture(ruta_resumen, width=Inches(9.0)) # Ancho grande para que se vea bien
+            doc.add_picture(ruta_resumen, width=Inches(9.0))
         except:
             doc.add_paragraph("[Error al insertar la imagen de resumen]")
     else:
-        doc.add_paragraph("[Imagen 'tabla_resumen' no encontrada en la carpeta images. Por favor súbela al repositorio]")
+        doc.add_paragraph("[Imagen 'tabla_resumen' no encontrada]")
 
     doc.add_paragraph("\n")
 
@@ -572,30 +564,21 @@ with col1:
     )
 
 with col2:
-    # NUEVOS OBJETIVOS
-    lista_objetivos = [
-        "Fuerza Máxima", 
-        "Hipertrofia Muscular", 
-        "Definición Muscular", 
-        "Resistencia Muscular",
-        "Mantenimiento Muscular",
-        "Rehabilitación Muscular y Articular"
-    ]
-    objetivo = st.selectbox("Objetivo:", lista_objetivos, key=get_key("objetivo"))
+    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
+    objetivo = st.selectbox("Objetivo:", 
+                            ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Rehabilitación Muscular y Articular", "Fuerza Máxima", "Mantenimiento Muscular"], 
+                            key=get_key("objetivo"))
     
     intensidad_seleccionada = 0
     reps_seleccionadas = ""
     descanso_seleccionado = ""
     cardio_duracion = "" 
-    series_finales = "" # Variable para series
-    
-    # --- LÓGICA ACTUALIZADA ---
+    series_finales = ""
     
     if objetivo == "Fuerza Máxima":
         st.info("Rango: 1-5 Reps | Intensidad: 85-100% RM | 4-6 Series")
         cardio_duracion = "Bajo"
         series_finales = "4-6"
-        
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100], key=get_key("int_fm"))
@@ -609,7 +592,6 @@ with col2:
         st.info("Rango: 6-12 Reps | Intensidad: 65-85% RM | 3-6 Series")
         cardio_duracion = "Moderado"
         series_finales = "3-6"
-        
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [65, 70, 75, 80, 85], key=get_key("int_hyp"))
@@ -623,7 +605,6 @@ with col2:
         st.info("Rango: 10-15 Reps | Intensidad: 60-75% RM | 3-5 Series")
         cardio_duracion = "Alto"
         series_finales = "3-5"
-        
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75], key=get_key("int_def"))
@@ -637,7 +618,6 @@ with col2:
         st.info("Rango: 15-30+ Reps | Intensidad: 30-60% RM | 2-4 Series")
         cardio_duracion = "Muy Alto"
         series_finales = "2-4"
-        
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [30, 35, 40, 45, 50, 55, 60], key=get_key("int_res"))
@@ -651,7 +631,6 @@ with col2:
         st.info("Rango: 8-12 Reps | Intensidad: 60-75% RM | 2-3 Series")
         cardio_duracion = "Moderado"
         series_finales = "2-3"
-        
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75], key=get_key("int_man"))
@@ -664,25 +643,21 @@ with col2:
     elif objetivo == "Rehabilitación Muscular y Articular":
         st.info("Rango: 1-30 Reps | Intensidad: 20-60% RM | 1-5 Series | Depende Fase")
         cardio_duracion = "Muy bajo"
-        
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [20, 30, 40, 50, 60], key=get_key("int_reh"))
-        with col_b:
-            # Selector flexible numérico
-            val_reps = st.number_input("Nº Repeticiones:", 1, 30, 12, key=get_key("reps_reh"))
+        col_rh1, col_rh2, col_rh3 = st.columns(3)
+        with col_rh1:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [20, 30, 40, 50, 60], key=get_key("int_rehab"))
+        with col_rh2:
+            val_reps = st.number_input("Nº Repeticiones:", 1, 30, 12, key=get_key("reps_rehab"))
             reps_seleccionadas = str(val_reps)
-        with col_c:
-            descanso_seleccionado = st.selectbox("Descanso:", ["45 seg", "60 seg", "90 seg"], key=get_key("desc_reh"))
+        with col_rh3:
+            descanso_seleccionado = st.selectbox("Descanso:", ["30 seg", "45 seg", "1 min", "2 min"], key=get_key("desc_rehab"))
         
-        # Series manuales para Rehab
         series_finales = st.selectbox("Series:", ["1", "2", "3", "4", "5"], index=2, key=get_key("ser_reh"))
-
 
 if sel_tipos:
     ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
     
-    # LÓGICA DE DEFAULT
+    # RANGO 1-12
     default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
     max_val = min(12, len(ej_filtrados)) 
     
@@ -749,7 +724,15 @@ if sel_tipos:
     rm_inputs = {}
     for i, ej in enumerate(seleccionados_data):
         with cols[i%3]:
-            rm_inputs[ej['nombre']] = st.number_input(f"1RM {ej['nombre']} (kg)", value=100, step=5, key=get_key(f"rm_{ej['nombre']}"))
+            # === CORRECCIÓN CLAVE: RM INPUT LIBERADO ===
+            rm_inputs[ej['nombre']] = st.number_input(
+                f"1RM {ej['nombre']} (kg)", 
+                min_value=0, 
+                max_value=500, 
+                value=60, 
+                step=1, 
+                key=get_key(f"rm_{ej['nombre']}")
+            )
 
     st.markdown("---")
     st.subheader("Vuelta a la Calma: Estiramientos")
@@ -822,7 +805,7 @@ if sel_tipos:
                 intensidad_str=f"{intensidad_seleccionada}%", 
                 cardio_tipo=cardio_seleccion, 
                 cardio_tiempo=cardio_duracion,
-                series_str=series_finales # Pasamos las series correctas
+                series_str=series_finales
             )
             st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
             st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
