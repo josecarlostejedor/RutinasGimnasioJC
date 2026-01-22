@@ -724,14 +724,14 @@ if sel_tipos:
     rm_inputs = {}
     for i, ej in enumerate(seleccionados_data):
         with cols[i%3]:
-            # === CORRECCIÓN CLAVE: RM INPUT LIBERADO ===
+            # === CORRECCIÓN CLAVE: 1RM ENTEROS SIN BLOQUEOS ===
             rm_inputs[ej['nombre']] = st.number_input(
                 f"1RM {ej['nombre']} (kg)", 
                 min_value=0, 
                 max_value=500, 
                 value=60, 
                 step=1, 
-                key=get_key(f"rm_{ej['nombre']}")
+                key=get_key(f"rm_{i}_{ej['nombre']}")
             )
 
     st.markdown("---")
