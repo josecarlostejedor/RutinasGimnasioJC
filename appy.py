@@ -22,6 +22,8 @@ def get_key(base_name):
     return f"{base_name}_{st.session_state.reset_counter}"
 
 # --- DATOS TEÓRICOS DE LOS OBJETIVOS ---
+# Nota: La primera línea (ej: "1️⃣ FUERZA MÁXIMA") se ignorará al generar el Word
+# para usar el título nativo del documento "5. FUERZA MÁXIMA".
 INFO_OBJETIVOS = {
     "Fuerza Máxima": """1️⃣ FUERZA MÁXIMA
 🎯 Objetivo
@@ -72,8 +74,14 @@ Métodos: superseries, circuitos, alta densidad
 
 ❤️ Trabajo cardiovascular
 Tipo: HIIT + aeróbico
-HIIT: 85–95 % FCmáx | 10–20 min | 1–2 días/sem
-Aeróbico: 65–75 % FCmáx | 30–45 min | 2–3 días/sem""",
+HIIT:
+85–95 % FCmáx
+10–20 min
+1–2 días/semana
+Aeróbico:
+65–75 % FCmáx
+30–45 min
+2–3 días/semana""",
 
     "Resistencia Muscular": """4️⃣ RESISTENCIA MUSCULAR
 🎯 Objetivo
@@ -167,6 +175,13 @@ def style_header_cell(cell, text, width_inches=None):
     run.font.color.rgb = RGBColor(255, 255, 255)
     set_cell_bg_color(cell, "2E4053")
 
+def set_row_cant_split(row):
+    """Evita que una fila de tabla se divida entre páginas"""
+    tr = row._tr
+    trPr = tr.get_or_add_trPr()
+    cantSplit = OxmlElement('w:cantSplit')
+    trPr.append(cantSplit)
+
 # --- BUSCADOR DE IMÁGENES ---
 def encontrar_imagen_recursiva(nombre_objetivo):
     if not nombre_objetivo or pd.isna(nombre_objetivo):
@@ -233,7 +248,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_num.font.size = Pt(10)
     add_page_number(run_num)
 
-    # PÁGINA 1
+    # ================= PÁGINA 1: PORTADA =================
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
     head_tbl.columns[0].width = Inches(9.8) 
@@ -319,6 +334,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
+    # Fila con altura mínima para que las fotos se vean bien
     TR_HEIGHT_TWIPS = 2800 
     for row in vis_table.rows:
         tr = row._tr
@@ -327,6 +343,8 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         trHeight.set(qn('w:val'), str(TR_HEIGHT_TWIPS))
         trHeight.set(qn('w:hRule'), "atLeast")
         trPr.append(trHeight)
+        # Evitar ruptura
+        set_row_cant_split(row)
 
     for i, row_data in enumerate(rutina_df.to_dict('records')):
         r = i // cols_visual
@@ -349,9 +367,10 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
+    # SALTO DE PÁGINA OBLIGADO PARA SEPARAR GUÍA DE RUTINA
     doc.add_page_break()
 
-    # PÁGINA 2
+    # ================= PÁGINA 2: RUTINA DETALLADA =================
     h2 = doc.add_heading(level=1)
     run_h2 = h2.add_run('2. Rutina Detallada')
     run_h2.font.size = Pt(18)
@@ -363,11 +382,13 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     widths = [0.7, 3.5, 1.5, 1.0, 1.5, 2.4] 
     headers = ["Orden", "Ejercicio", "Series x Reps", "Carga", "Descanso", "Notas"]
     row_hdr = tech_table.rows[0]
+    set_row_cant_split(row_hdr) # Cabecera indivisible
     for i, h in enumerate(headers):
         style_header_cell(row_hdr.cells[i], h, widths[i])
         
     for idx, row_data in rutina_df.iterrows():
         row_cells = tech_table.add_row().cells
+        set_row_cant_split(tech_table.rows[-1]) # Fila indivisible
         for i in range(6):
             row_cells[i].width = Inches(widths[i])
         row_cells[0].text = str(idx + 1)
@@ -380,11 +401,15 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
+    # ================= SECCIÓN 3: ESTIRAMIENTOS =================
     if lista_estiramientos:
         h3 = doc.add_heading(level=1)
         run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
         run_h3.font.size = Pt(18)
         run_h3.font.color.rgb = RGBColor(44, 62, 80)
+        # Propiedad clave: Mantener con el siguiente párrafo
+        h3.paragraph_format.keep_with_next = True
+
         num_est = len(lista_estiramientos)
         cols_est = 4
         rows_est = (num_est + cols_est - 1) // cols_est
@@ -397,6 +422,9 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             trHeight.set(qn('w:val'), str(2600))
             trHeight.set(qn('w:hRule'), "atLeast")
             trPr.append(trHeight)
+            # Evitar ruptura interna de filas
+            set_row_cant_split(row)
+
         for i, item_est in enumerate(lista_estiramientos):
             r = i // cols_est
             c = i % cols_est
@@ -419,13 +447,21 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             run_nom.font.size = Pt(9)
         doc.add_paragraph("\n")
 
+    # ================= SECCIÓN 4: BORG =================
     h4 = doc.add_heading(level=1)
-    run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE)')
+    run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE) - Escala de Borg')
     run_h4.font.size = Pt(18)
     run_h4.font.color.rgb = RGBColor(44, 62, 80)
+    # Lógica: Si hay espacio, se queda aquí. Si no, se lleva el título a la otra página.
+    h4.paragraph_format.keep_with_next = True
+
     borg_table = doc.add_table(rows=3, cols=5)
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
+    # Hacemos que ninguna fila de Borg se rompa
+    for row in borg_table.rows:
+        set_row_cant_split(row)
+
     borg_data = [
         {"val": "6-8", "txt": "Muy Ligero", "icon": "🙂", "color": "A9DFBF"},
         {"val": "9-11", "txt": "Ligero", "icon": "😌", "color": "D4EFDF"},
@@ -466,20 +502,56 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     p_note = doc.add_paragraph("Marca con una X la sensación global al terminar el entrenamiento.")
     p_note.style = "Caption"
 
-    doc.add_page_break()
-
-    # --- SECCIÓN 5: MARCO TEÓRICO ---
-    h5 = doc.add_heading(level=1)
-    texto_teorico = INFO_OBJETIVOS.get(objetivo, "Información no disponible.")
-    doc.add_paragraph(texto_teorico)
-    
     doc.add_paragraph("\n")
 
-    # --- SECCIÓN 6: RESUMEN (IMAGEN) ---
+    # ================= SECCIÓN 5: MARCO TEÓRICO (PARSING) =================
+    h5 = doc.add_heading(level=1)
+    
+    # Construcción dinámica del título: "5. NOMBRE DEL OBJETIVO"
+    run_h5 = h5.add_run(f"5. {objetivo.upper()}")
+    run_h5.font.size = Pt(18)
+    run_h5.font.color.rgb = RGBColor(44, 62, 80)
+    
+    # Obtenemos texto
+    raw_text = INFO_OBJETIVOS.get(objetivo, "Información no disponible.")
+    # Quitamos la primera línea que tenía el número antiguo (ej: 1️⃣ FUERZA...)
+    clean_lines = raw_text.split('\n')[1:] 
+    
+    # Lista de emojis que inician líneas importantes
+    emojis_clave = ['🎯', '🏋️‍♂️', '❤️', '🔁', '🟢', '🟡', '🔵']
+    
+    for line in clean_lines:
+        if not line.strip(): 
+            continue # Saltar vacías
+            
+        p_teoria = doc.add_paragraph()
+        first_char = line.strip()[0]
+        
+        # Si empieza por emoji clave, hacemos el icono grande
+        if any(line.strip().startswith(e) for e in emojis_clave):
+            # Encontrar donde acaba el emoji (espacio)
+            parts = line.strip().split(' ', 1)
+            emoji_part = parts[0]
+            text_part = parts[1] if len(parts) > 1 else ""
+            
+            r_emo = p_teoria.add_run(emoji_part + " ")
+            r_emo.font.size = Pt(18) # Icono Grande
+            
+            r_txt = p_teoria.add_run(text_part)
+            r_txt.font.size = Pt(11) # Texto normal
+        else:
+            # Texto normal
+            r_normal = p_teoria.add_run(line)
+            r_normal.font.size = Pt(11)
+
+    doc.add_paragraph("\n")
+
+    # ================= SECCIÓN 6: RESUMEN (IMAGEN) =================
     h6 = doc.add_heading(level=1)
     run_h6 = h6.add_run('6. RESUMEN DE FORMAS DE TRABAJO')
-    run_h6.font.size = Pt(16)
+    run_h6.font.size = Pt(18)
     run_h6.font.color.rgb = RGBColor(44, 62, 80)
+    h6.paragraph_format.keep_with_next = True # Pegado a la imagen
     
     ruta_resumen, msg = encontrar_imagen_recursiva("tabla_resumen") 
     if ruta_resumen:
@@ -492,19 +564,15 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
-    # --- SECCIÓN 7: REFLEXIÓN ALUMNO ---
+    # ================= SECCIÓN 7: REFLEXIÓN ALUMNO =================
     h7 = doc.add_heading(level=1)
     run_h7 = h7.add_run('7. MI CIRCUITO DE TRABAJO SE BASA EN LOS SIGUIENTES PRINCIPIOS DE ENTRENAMIENTO Y SIGUE LA SIGUIENTE LÓGICA')
     run_h7.font.size = Pt(14)
     run_h7.font.color.rgb = RGBColor(44, 62, 80)
+    h7.paragraph_format.keep_with_next = True
     
-    doc.add_paragraph("(Explica cómo y por qué estableces este circuito según tus objetivos y criterios científicos):")
-    doc.add_paragraph("_" * 130)
-    doc.add_paragraph("_" * 130)
-    doc.add_paragraph("_" * 130)
-    doc.add_paragraph("_" * 130)
-    doc.add_paragraph("_" * 130)
-    doc.add_paragraph("_" * 130)
+    p_inst = doc.add_paragraph("(Explica cómo y por qué estableces este circuito según tus objetivos y criterios científicos):")
+    p_inst.paragraph_format.space_after = Pt(200) # Espacio grande vacío después
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -691,27 +759,20 @@ if sel_tipos:
     nombres_finales = seleccion.copy()
 
     # --- ESTABILIZACIÓN DE LA SELECCIÓN ---
-    # Calculamos un ID único para la configuración actual
     config_id = f"{sel_tipos}_{num_ej}_{seleccion}_{rellenar_auto}_{st.session_state.reset_counter}"
     
-    # Si la config ha cambiado, generamos nueva lista. Si no, usamos la guardada.
     if 'last_config_id' not in st.session_state or st.session_state.last_config_id != config_id:
-        # Generar lista nueva (incluyendo aleatorios si hace falta)
         if rellenar_auto and len(nombres_finales) < num_ej:
             pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
             needed = num_ej - len(nombres_finales)
             if needed <= len(pool):
                 extras = random.sample(pool, needed)
                 nombres_finales.extend([x['nombre'] for x in extras])
-        
-        # Guardamos en estado
         st.session_state.final_names = nombres_finales
         st.session_state.last_config_id = config_id
     
-    # Recuperamos la lista estable del estado
     nombres_finales_estables = st.session_state.final_names
     
-    # Reconstruimos objetos
     seleccionados_data = []
     for nom in nombres_finales_estables:
         obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
@@ -739,11 +800,8 @@ if sel_tipos:
     rm_inputs = {}
     for i, ej in enumerate(seleccionados_data):
         with cols[i%3]:
-            # === SOLUCIÓN DEFINITIVA BLOQUEO RM ===
-            # Usamos un key que incluye el índice 'i' para garantizar unicidad absoluta
-            # Y usamos el session_state para persistir el valor si el usuario lo cambia
+            # === MEMORIA INTELIGENTE PARA 1RM ===
             val_key = f"rm_{i}_{ej['nombre']}_{st.session_state.reset_counter}"
-            
             rm_inputs[ej['nombre']] = st.number_input(
                 f"1RM {ej['nombre']} (kg)", 
                 min_value=0, 
@@ -773,7 +831,7 @@ if sel_tipos:
         num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
         seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
         
-        # Misma lógica de estabilización para estiramientos
+        # Estabilización de estiramientos
         config_est_id = f"EST_{num_est_select}_{seleccion_est}_{st.session_state.reset_counter}"
         
         if 'last_est_id' not in st.session_state or st.session_state.last_est_id != config_est_id:
@@ -783,7 +841,6 @@ if sel_tipos:
                 needed_est = num_est_select - len(estiramientos_finales_nombres)
                 if needed_est <= len(pool_est):
                      estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
-            
             st.session_state.final_est_names = estiramientos_finales_nombres
             st.session_state.last_est_id = config_est_id
             
@@ -840,7 +897,6 @@ if sel_tipos:
 def reset_app():
     st.session_state.reset_counter += 1
     st.cache_data.clear()
-    # Limpiamos también las variables de estabilización
     if 'last_config_id' in st.session_state: del st.session_state.last_config_id
     if 'last_est_id' in st.session_state: del st.session_state.last_est_id
 
