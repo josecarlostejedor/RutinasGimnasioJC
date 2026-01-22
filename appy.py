@@ -690,15 +690,30 @@ if sel_tipos:
     seleccionados_data = []
     nombres_finales = seleccion.copy()
 
-    if rellenar_auto and len(nombres_finales) < num_ej:
-        pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
-        needed = num_ej - len(nombres_finales)
-        if needed <= len(pool):
-            extras = random.sample(pool, needed)
-            nombres_finales.extend([x['nombre'] for x in extras])
-
+    # --- ESTABILIZACIÓN DE LA SELECCIÓN ---
+    # Calculamos un ID único para la configuración actual
+    config_id = f"{sel_tipos}_{num_ej}_{seleccion}_{rellenar_auto}_{st.session_state.reset_counter}"
+    
+    # Si la config ha cambiado, generamos nueva lista. Si no, usamos la guardada.
+    if 'last_config_id' not in st.session_state or st.session_state.last_config_id != config_id:
+        # Generar lista nueva (incluyendo aleatorios si hace falta)
+        if rellenar_auto and len(nombres_finales) < num_ej:
+            pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
+            needed = num_ej - len(nombres_finales)
+            if needed <= len(pool):
+                extras = random.sample(pool, needed)
+                nombres_finales.extend([x['nombre'] for x in extras])
+        
+        # Guardamos en estado
+        st.session_state.final_names = nombres_finales
+        st.session_state.last_config_id = config_id
+    
+    # Recuperamos la lista estable del estado
+    nombres_finales_estables = st.session_state.final_names
+    
+    # Reconstruimos objetos
     seleccionados_data = []
-    for nom in nombres_finales:
+    for nom in nombres_finales_estables:
         obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
         if obj_ejercicio:
             seleccionados_data.append(obj_ejercicio)
@@ -724,14 +739,18 @@ if sel_tipos:
     rm_inputs = {}
     for i, ej in enumerate(seleccionados_data):
         with cols[i%3]:
-            # === CORRECCIÓN CLAVE: 1RM ENTEROS SIN BLOQUEOS ===
+            # === SOLUCIÓN DEFINITIVA BLOQUEO RM ===
+            # Usamos un key que incluye el índice 'i' para garantizar unicidad absoluta
+            # Y usamos el session_state para persistir el valor si el usuario lo cambia
+            val_key = f"rm_{i}_{ej['nombre']}_{st.session_state.reset_counter}"
+            
             rm_inputs[ej['nombre']] = st.number_input(
                 f"1RM {ej['nombre']} (kg)", 
                 min_value=0, 
                 max_value=500, 
                 value=60, 
                 step=1, 
-                key=get_key(f"rm_{i}_{ej['nombre']}")
+                key=val_key
             )
 
     st.markdown("---")
@@ -754,15 +773,22 @@ if sel_tipos:
         num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
         seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
         
-        estiramientos_finales_nombres = seleccion_est.copy()
-        if len(estiramientos_finales_nombres) < num_est_select:
-            pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
-            needed_est = num_est_select - len(estiramientos_finales_nombres)
-            if needed_est <= len(pool_est):
-                 estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
-
+        # Misma lógica de estabilización para estiramientos
+        config_est_id = f"EST_{num_est_select}_{seleccion_est}_{st.session_state.reset_counter}"
+        
+        if 'last_est_id' not in st.session_state or st.session_state.last_est_id != config_est_id:
+            estiramientos_finales_nombres = seleccion_est.copy()
+            if len(estiramientos_finales_nombres) < num_est_select:
+                pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
+                needed_est = num_est_select - len(estiramientos_finales_nombres)
+                if needed_est <= len(pool_est):
+                     estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
+            
+            st.session_state.final_est_names = estiramientos_finales_nombres
+            st.session_state.last_est_id = config_est_id
+            
         estiramientos_finales = []
-        for nom in estiramientos_finales_nombres:
+        for nom in st.session_state.final_est_names:
              estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
 
     else:
@@ -814,6 +840,9 @@ if sel_tipos:
 def reset_app():
     st.session_state.reset_counter += 1
     st.cache_data.clear()
+    # Limpiamos también las variables de estabilización
+    if 'last_config_id' in st.session_state: del st.session_state.last_config_id
+    if 'last_est_id' in st.session_state: del st.session_state.last_est_id
 
 with col_reset:
     st.write("")
