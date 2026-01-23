@@ -22,8 +22,6 @@ def get_key(base_name):
     return f"{base_name}_{st.session_state.reset_counter}"
 
 # --- DATOS TEÓRICOS DE LOS OBJETIVOS ---
-# Nota: La primera línea (ej: "1️⃣ FUERZA MÁXIMA") se ignorará al generar el Word
-# para usar el título nativo del documento "5. FUERZA MÁXIMA".
 INFO_OBJETIVOS = {
     "Fuerza Máxima": """1️⃣ FUERZA MÁXIMA
 🎯 Objetivo
@@ -74,14 +72,8 @@ Métodos: superseries, circuitos, alta densidad
 
 ❤️ Trabajo cardiovascular
 Tipo: HIIT + aeróbico
-HIIT:
-85–95 % FCmáx
-10–20 min
-1–2 días/semana
-Aeróbico:
-65–75 % FCmáx
-30–45 min
-2–3 días/semana""",
+HIIT: 85–95 % FCmáx | 10–20 min | 1–2 días/sem
+Aeróbico: 65–75 % FCmáx | 30–45 min | 2–3 días/sem""",
 
     "Resistencia Muscular": """4️⃣ RESISTENCIA MUSCULAR
 🎯 Objetivo
@@ -134,7 +126,65 @@ Propiocepción dinámica
 🔵 Fase 3 – Transición al entrenamiento
 50–60 % RM
 Patrones básicos
-Integración progresiva con mantenimiento muscular"""
+Integración progresiva con mantenimiento muscular""",
+
+    "Programa de Pérdida de Peso": """🔥 PROGRAMA DE PÉRDIDA DE PESO
+
+🎯 Objetivo
+Reducir grasa corporal
+Mantener o minimizar la pérdida de masa muscular
+Aumentar el gasto energético total
+Mejorar la salud metabólica y cardiovascular
+Crear hábitos de actividad física sostenibles
+
+🏋️‍♂️ Fuerza (entrenamiento principal)
+🔹 Intensidad
+50–70 % de 1RM
+🔹 Repeticiones
+12–20 repeticiones
+🔹 Series
+3–4 series
+🔹 Descanso
+20–45 segundos
+
+🔹 Organización del trabajo
+Circuitos
+Superseries
+Ejercicios multiarticulares prioritarios
+Ritmo continuo, intensidad alta
+
+Objetivo de la fuerza
+Mantener masa muscular
+Aumentar gasto calórico
+Mejorar tono muscular
+
+❤️ Entrenamiento cardiovascular
+🔹 Aeróbico continuo
+Intensidad: 60–75 % FCmáx
+Duración: 30–60 min
+Frecuencia: 3–5 días/semana
+Ejemplos: caminar rápido, bici, elíptica, natación
+
+🔹 HIIT (opcional)
+Intensidad: 85–95 % FCmáx
+Duración: 10–20 min
+Frecuencia: 1–2 días/semana
+Formato: intervalos cortos de alta intensidad + recuperación activa
+
+🧠 Consejos clave
+La fuerza es imprescindible para no perder músculo
+No bajar de 50 % RM de forma sistemática
+Mantener déficit calórico moderado
+Priorizar adherencia y progresión
+Dormir y recuperarse adecuadamente
+Aumentar el NEAT- Non Exercice Activity Thermogenesis (pasos diarios, vida activa)
+Revaluar cargas cada 4–6 semanas
+
+⚠️ Errores comunes
+Solo cardio y nada de fuerza
+Usar cargas muy ligeras durante meses
+Descansos excesivos
+Déficits calóricos extremos"""
 }
 
 # --- FUNCIONES AUXILIARES PARA WORD ---
@@ -248,7 +298,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_num.font.size = Pt(10)
     add_page_number(run_num)
 
-    # ================= PÁGINA 1: PORTADA =================
+    # PÁGINA 1
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
     head_tbl.columns[0].width = Inches(9.8) 
@@ -334,7 +384,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
-    # Fila con altura mínima para que las fotos se vean bien
     TR_HEIGHT_TWIPS = 2800 
     for row in vis_table.rows:
         tr = row._tr
@@ -343,7 +392,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         trHeight.set(qn('w:val'), str(TR_HEIGHT_TWIPS))
         trHeight.set(qn('w:hRule'), "atLeast")
         trPr.append(trHeight)
-        # Evitar ruptura
         set_row_cant_split(row)
 
     for i, row_data in enumerate(rutina_df.to_dict('records')):
@@ -367,10 +415,9 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
 
-    # SALTO DE PÁGINA OBLIGADO PARA SEPARAR GUÍA DE RUTINA
     doc.add_page_break()
 
-    # ================= PÁGINA 2: RUTINA DETALLADA =================
+    # PÁGINA 2
     h2 = doc.add_heading(level=1)
     run_h2 = h2.add_run('2. Rutina Detallada')
     run_h2.font.size = Pt(18)
@@ -382,13 +429,13 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     widths = [0.7, 3.5, 1.5, 1.0, 1.5, 2.4] 
     headers = ["Orden", "Ejercicio", "Series x Reps", "Carga", "Descanso", "Notas"]
     row_hdr = tech_table.rows[0]
-    set_row_cant_split(row_hdr) # Cabecera indivisible
+    set_row_cant_split(row_hdr)
     for i, h in enumerate(headers):
         style_header_cell(row_hdr.cells[i], h, widths[i])
         
     for idx, row_data in rutina_df.iterrows():
         row_cells = tech_table.add_row().cells
-        set_row_cant_split(tech_table.rows[-1]) # Fila indivisible
+        set_row_cant_split(tech_table.rows[-1])
         for i in range(6):
             row_cells[i].width = Inches(widths[i])
         row_cells[0].text = str(idx + 1)
@@ -401,13 +448,11 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 3: ESTIRAMIENTOS =================
     if lista_estiramientos:
         h3 = doc.add_heading(level=1)
         run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
         run_h3.font.size = Pt(18)
         run_h3.font.color.rgb = RGBColor(44, 62, 80)
-        # Propiedad clave: Mantener con el siguiente párrafo
         h3.paragraph_format.keep_with_next = True
 
         num_est = len(lista_estiramientos)
@@ -422,7 +467,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             trHeight.set(qn('w:val'), str(2600))
             trHeight.set(qn('w:hRule'), "atLeast")
             trPr.append(trHeight)
-            # Evitar ruptura interna de filas
             set_row_cant_split(row)
 
         for i, item_est in enumerate(lista_estiramientos):
@@ -447,18 +491,15 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             run_nom.font.size = Pt(9)
         doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 4: BORG =================
     h4 = doc.add_heading(level=1)
     run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE) - Escala de Borg')
     run_h4.font.size = Pt(18)
     run_h4.font.color.rgb = RGBColor(44, 62, 80)
-    # Lógica: Si hay espacio, se queda aquí. Si no, se lleva el título a la otra página.
     h4.paragraph_format.keep_with_next = True
 
     borg_table = doc.add_table(rows=3, cols=5)
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
-    # Hacemos que ninguna fila de Borg se rompa
     for row in borg_table.rows:
         set_row_cant_split(row)
 
@@ -504,32 +545,28 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 5: MARCO TEÓRICO (PARSING) =================
+    # --- SECCIÓN 5: MARCO TEÓRICO ---
     h5 = doc.add_heading(level=1)
-    
-    # Construcción dinámica del título: "5. NOMBRE DEL OBJETIVO"
+    # Título dinámico
     run_h5 = h5.add_run(f"5. {objetivo.upper()}")
     run_h5.font.size = Pt(18)
     run_h5.font.color.rgb = RGBColor(44, 62, 80)
     
-    # Obtenemos texto
     raw_text = INFO_OBJETIVOS.get(objetivo, "Información no disponible.")
-    # Quitamos la primera línea que tenía el número antiguo (ej: 1️⃣ FUERZA...)
+    # Quitamos la primera línea (ej: 1️⃣ FUERZA...)
     clean_lines = raw_text.split('\n')[1:] 
     
-    # Lista de emojis que inician líneas importantes
-    emojis_clave = ['🎯', '🏋️‍♂️', '❤️', '🔁', '🟢', '🟡', '🔵']
+    # Emojis para agrandar
+    emojis_clave = ['🎯', '🏋️‍♂️', '❤️', '🔁', '🟢', '🟡', '🔵', '🔥', '🔹', '🧠', '⚠️']
     
     for line in clean_lines:
         if not line.strip(): 
-            continue # Saltar vacías
+            continue 
             
         p_teoria = doc.add_paragraph()
-        first_char = line.strip()[0]
         
-        # Si empieza por emoji clave, hacemos el icono grande
         if any(line.strip().startswith(e) for e in emojis_clave):
-            # Encontrar donde acaba el emoji (espacio)
+            # Separar emoji del resto
             parts = line.strip().split(' ', 1)
             emoji_part = parts[0]
             text_part = parts[1] if len(parts) > 1 else ""
@@ -538,20 +575,19 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             r_emo.font.size = Pt(18) # Icono Grande
             
             r_txt = p_teoria.add_run(text_part)
-            r_txt.font.size = Pt(11) # Texto normal
+            r_txt.font.size = Pt(11) 
         else:
-            # Texto normal
             r_normal = p_teoria.add_run(line)
             r_normal.font.size = Pt(11)
 
     doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 6: RESUMEN (IMAGEN) =================
+    # --- SECCIÓN 6: RESUMEN (IMAGEN) ---
     h6 = doc.add_heading(level=1)
     run_h6 = h6.add_run('6. RESUMEN DE FORMAS DE TRABAJO')
     run_h6.font.size = Pt(18)
     run_h6.font.color.rgb = RGBColor(44, 62, 80)
-    h6.paragraph_format.keep_with_next = True # Pegado a la imagen
+    h6.paragraph_format.keep_with_next = True 
     
     ruta_resumen, msg = encontrar_imagen_recursiva("tabla_resumen") 
     if ruta_resumen:
@@ -564,7 +600,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 7: REFLEXIÓN ALUMNO =================
+    # --- SECCIÓN 7: REFLEXIÓN ALUMNO ---
     h7 = doc.add_heading(level=1)
     run_h7 = h7.add_run('7. MI CIRCUITO DE TRABAJO SE BASA EN LOS SIGUIENTES PRINCIPIOS DE ENTRENAMIENTO Y SIGUE LA SIGUIENTE LÓGICA')
     run_h7.font.size = Pt(14)
@@ -572,7 +608,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     h7.paragraph_format.keep_with_next = True
     
     p_inst = doc.add_paragraph("(Explica cómo y por qué estableces este circuito según tus objetivos y criterios científicos):")
-    p_inst.paragraph_format.space_after = Pt(200) # Espacio grande vacío después
+    p_inst.paragraph_format.space_after = Pt(200) 
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -632,9 +668,17 @@ with col1:
     )
 
 with col2:
-    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
+    # NUEVO ORDEN DE OBJETIVOS CON "PÉRDIDA DE PESO"
     objetivo = st.selectbox("Objetivo:", 
-                            ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Rehabilitación Muscular y Articular", "Fuerza Máxima", "Mantenimiento Muscular"], 
+                            [
+                                "Fuerza Máxima", 
+                                "Hipertrofia Muscular", 
+                                "Definición Muscular", 
+                                "Programa de Pérdida de Peso", # Nuevo
+                                "Resistencia Muscular", 
+                                "Mantenimiento Muscular",
+                                "Rehabilitación Muscular y Articular"
+                            ], 
                             key=get_key("objetivo"))
     
     intensidad_seleccionada = 0
@@ -681,6 +725,19 @@ with col2:
             reps_seleccionadas = str(val_reps)
         with col_c:
             descanso_seleccionado = st.selectbox("Descanso:", ["30 seg", "45 seg", "60 seg"], key=get_key("desc_def"))
+
+    elif objetivo == "Programa de Pérdida de Peso":
+        st.info("Rango: 12-20 Rps | Intensidad: 50–70 % RM | 3-4 Series")
+        cardio_duracion = "30-60 min + HIIT"
+        series_finales = "3-4"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [50, 55, 60, 65, 70], key=get_key("int_pp"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [12, 13, 14, 15, 16, 17, 18, 19, 20], key=get_key("reps_pp"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["20 seg", "30 seg", "45 seg"], key=get_key("desc_pp"))
 
     elif objetivo == "Resistencia Muscular":
         st.info("Rango: 15-30+ Reps | Intensidad: 30-60% RM | 2-4 Series")
@@ -800,7 +857,6 @@ if sel_tipos:
     rm_inputs = {}
     for i, ej in enumerate(seleccionados_data):
         with cols[i%3]:
-            # === MEMORIA INTELIGENTE PARA 1RM ===
             val_key = f"rm_{i}_{ej['nombre']}_{st.session_state.reset_counter}"
             rm_inputs[ej['nombre']] = st.number_input(
                 f"1RM {ej['nombre']} (kg)", 
@@ -831,7 +887,6 @@ if sel_tipos:
         num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
         seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
         
-        # Estabilización de estiramientos
         config_est_id = f"EST_{num_est_select}_{seleccion_est}_{st.session_state.reset_counter}"
         
         if 'last_est_id' not in st.session_state or st.session_state.last_est_id != config_est_id:
@@ -841,6 +896,7 @@ if sel_tipos:
                 needed_est = num_est_select - len(estiramientos_finales_nombres)
                 if needed_est <= len(pool_est):
                      estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
+            
             st.session_state.final_est_names = estiramientos_finales_nombres
             st.session_state.last_est_id = config_est_id
             
