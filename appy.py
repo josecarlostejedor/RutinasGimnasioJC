@@ -226,7 +226,6 @@ def style_header_cell(cell, text, width_inches=None):
     set_cell_bg_color(cell, "2E4053")
 
 def set_row_cant_split(row):
-    """Evita que una fila de tabla se divida entre páginas"""
     tr = row._tr
     trPr = tr.get_or_add_trPr()
     cantSplit = OxmlElement('w:cantSplit')
@@ -248,7 +247,7 @@ def encontrar_imagen_recursiva(nombre_objetivo):
                     return os.path.join(root, filename), "Por Nombre"
     return None, f"No encontrado"
 
-# --- CARGAR EXCEL ---
+# --- CARGAR EXCEL (CON SOPORTE PARA ESTABILIZADORES) ---
 @st.cache_data
 def cargar_ejercicios():
     try:
@@ -257,16 +256,23 @@ def cargar_ejercicios():
             df.columns = df.columns.str.strip().str.lower()
             if 'nombre' not in df.columns:
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
+            
+            # Columnas obligatorias básicas
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
+                
+            # Columnas para análisis muscular (AHORA INCLUYE ESTABILIZADORES)
+            for col in ['agonistas', 'sinergistas', 'estabilizadores']:
+                if col not in df.columns: df[col] = ""
             
-            # Normalización
+            # Normalización de texto
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.replace('Rehabilitacion', 'Rehabilitación', regex=False)
             df['tipo'] = df['tipo'].str.replace('Rotualiana', 'Rotuliana', regex=False)
             df['tipo'] = df['tipo'].str.strip()
             
+            # Rellenar nulos
             df = df.fillna("")
             return df.to_dict('records')
         else:
@@ -276,8 +282,8 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD ---
-def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo, series_str):
+# --- GENERADOR WORD (CON ESTABILIZADORES) ---
+def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo, series_str, incluir_analisis_muscular):
     doc = Document()
     section = doc.sections[0]
     section.orientation = WD_ORIENT.LANDSCAPE
@@ -356,7 +362,8 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     doc.add_paragraph("_" * 95)
 
     h1 = doc.add_heading(level=1)
-    run_h1 = h1.add_run('1. Guía Visual de Ejercicios')
+    titulo_seccion_1 = '1. Guía Visual de Ejercicios con Análisis Muscular' if incluir_analisis_muscular else '1. Guía Visual de Ejercicios'
+    run_h1 = h1.add_run(titulo_seccion_1)
     run_h1.font.size = Pt(18)
     run_h1.font.color.rgb = RGBColor(44, 62, 80)
 
@@ -384,7 +391,10 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     rows_visual = (num_ej + cols_visual - 1) // cols_visual
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
-    TR_HEIGHT_TWIPS = 2800 
+    
+    # Altura de fila: Aumentada un poco más para que quepan los 3 grupos musculares
+    TR_HEIGHT_TWIPS = 3800 if incluir_analisis_muscular else 2800 
+    
     for row in vis_table.rows:
         tr = row._tr
         trPr = tr.get_or_add_trPr()
@@ -400,20 +410,49 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         cell = vis_table.cell(r, c)
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        # 1. Imagen
         ruta_img, msg = encontrar_imagen_recursiva(row_data['Imagen'])
         if ruta_img:
             try:
                 run = p.add_run()
                 run.add_picture(ruta_img, width=Inches(2.4), height=Inches(1.55))
                 p.paragraph_format.space_before = Pt(4)
-                p.paragraph_format.space_after = Pt(4)
+                p.paragraph_format.space_after = Pt(2)
             except:
                 p.add_run(f"[Error]\n")
         else:
             p.add_run(f"\n[FOTO NO DISPONIBLE]\n")
+        
+        # 2. Nombre Ejercicio
         run_nom = p.add_run("\n" + row_data['Ejercicio'])
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
+        
+        # 3. Análisis Muscular (Si se solicita)
+        if incluir_analisis_muscular:
+            p.add_run("\n" + "_"*25 + "\n").font.size = Pt(6)
+            
+            # Agonistas
+            run_ago_label = p.add_run("Músculos Agonistas:\n")
+            run_ago_label.font.bold = True
+            run_ago_label.font.size = Pt(8)
+            ago_text = str(row_data.get('agonistas', ''))
+            p.add_run(f"{ago_text}\n").font.size = Pt(8)
+            
+            # Sinergistas
+            run_sin_label = p.add_run("Músculos Sinergistas:\n")
+            run_sin_label.font.bold = True
+            run_sin_label.font.size = Pt(8)
+            sin_text = str(row_data.get('sinergistas', ''))
+            p.add_run(f"{sin_text}\n").font.size = Pt(8)
+
+            # Estabilizadores (NUEVO)
+            run_est_label = p.add_run("Músculos Estabilizadores:\n")
+            run_est_label.font.bold = True
+            run_est_label.font.size = Pt(8)
+            est_text = str(row_data.get('estabilizadores', ''))
+            p.add_run(f"{est_text}").font.size = Pt(8)
 
     doc.add_page_break()
 
@@ -547,16 +586,13 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     # --- SECCIÓN 5: MARCO TEÓRICO ---
     h5 = doc.add_heading(level=1)
-    # Título dinámico
     run_h5 = h5.add_run(f"5. {objetivo.upper()}")
     run_h5.font.size = Pt(18)
     run_h5.font.color.rgb = RGBColor(44, 62, 80)
     
     raw_text = INFO_OBJETIVOS.get(objetivo, "Información no disponible.")
-    # Quitamos la primera línea (ej: 1️⃣ FUERZA...)
     clean_lines = raw_text.split('\n')[1:] 
     
-    # Emojis para agrandar
     emojis_clave = ['🎯', '🏋️‍♂️', '❤️', '🔁', '🟢', '🟡', '🔵', '🔥', '🔹', '🧠', '⚠️']
     
     for line in clean_lines:
@@ -566,13 +602,12 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         p_teoria = doc.add_paragraph()
         
         if any(line.strip().startswith(e) for e in emojis_clave):
-            # Separar emoji del resto
             parts = line.strip().split(' ', 1)
             emoji_part = parts[0]
             text_part = parts[1] if len(parts) > 1 else ""
             
             r_emo = p_teoria.add_run(emoji_part + " ")
-            r_emo.font.size = Pt(18) # Icono Grande
+            r_emo.font.size = Pt(18) 
             
             r_txt = p_teoria.add_run(text_part)
             r_txt.font.size = Pt(11) 
@@ -668,17 +703,9 @@ with col1:
     )
 
 with col2:
-    # NUEVO ORDEN DE OBJETIVOS CON "PÉRDIDA DE PESO"
+    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
     objetivo = st.selectbox("Objetivo:", 
-                            [
-                                "Fuerza Máxima", 
-                                "Hipertrofia Muscular", 
-                                "Definición Muscular", 
-                                "Programa de Pérdida de Peso", # Nuevo
-                                "Resistencia Muscular", 
-                                "Mantenimiento Muscular",
-                                "Rehabilitación Muscular y Articular"
-                            ], 
+                            ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Programa de Pérdida de Peso", "Rehabilitación Muscular y Articular", "Fuerza Máxima", "Mantenimiento Muscular"], 
                             key=get_key("objetivo"))
     
     intensidad_seleccionada = 0
@@ -857,6 +884,7 @@ if sel_tipos:
     rm_inputs = {}
     for i, ej in enumerate(seleccionados_data):
         with cols[i%3]:
+            # === MEMORIA INTELIGENTE PARA 1RM ===
             val_key = f"rm_{i}_{ej['nombre']}_{st.session_state.reset_counter}"
             rm_inputs[ej['nombre']] = st.number_input(
                 f"1RM {ej['nombre']} (kg)", 
@@ -887,6 +915,7 @@ if sel_tipos:
         num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
         seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
         
+        # Estabilización de estiramientos
         config_est_id = f"EST_{num_est_select}_{seleccion_est}_{st.session_state.reset_counter}"
         
         if 'last_est_id' not in st.session_state or st.session_state.last_est_id != config_est_id:
@@ -896,7 +925,6 @@ if sel_tipos:
                 needed_est = num_est_select - len(estiramientos_finales_nombres)
                 if needed_est <= len(pool_est):
                      estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
-            
             st.session_state.final_est_names = estiramientos_finales_nombres
             st.session_state.last_est_id = config_est_id
             
@@ -908,11 +936,13 @@ if sel_tipos:
         st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
         estiramientos_finales = []
 
-    col_gen, col_reset = st.columns([3, 1])
+    # --- BOTONES FINALES ---
+    st.write("---")
+    st.subheader("Generar Informe")
+    col_pdf, col_reset = st.columns([2, 1])
 
-    with col_gen:
-        st.write("")
-        if st.button("📄 GENERAR DOCUMENTO CIENTÍFICO", type="primary", use_container_width=True, key=get_key("btn_gen")):
+    with col_pdf:
+        if st.button("📄 GENERAR DOCUMENTO ESTÁNDAR", type="primary", use_container_width=True, key=get_key("btn_std")):
             rutina_export = []
             for item in seleccionados_data:
                 rm = rm_inputs[item['nombre']]
@@ -924,7 +954,10 @@ if sel_tipos:
                     "Reps": reps_seleccionadas,
                     "Peso": peso_real,
                     "Descanso": descanso_seleccionado,
-                    "Intensidad_Real": f"{intensidad_seleccionada}%"
+                    "Intensidad_Real": f"{intensidad_seleccionada}%",
+                    "agonistas": item.get('agonistas', ''),
+                    "sinergistas": item.get('sinergistas', ''),
+                    "estabilizadores": item.get('estabilizadores', '')
                 })
             df = pd.DataFrame(rutina_export)
             
@@ -944,10 +977,52 @@ if sel_tipos:
                 intensidad_str=f"{intensidad_seleccionada}%", 
                 cardio_tipo=cardio_seleccion, 
                 cardio_tiempo=cardio_duracion,
-                series_str=series_finales
+                series_str=series_finales,
+                incluir_analisis_muscular=False # <--- MODO ESTÁNDAR
             )
-            st.success(f"Rutina generada: {objetivo} ({reps_seleccionadas} reps al {intensidad_seleccionada}%) + {len(estiramientos_finales)} Estiramientos")
-            st.download_button("📥 Descargar Rutina .docx", docx, f"Rutina_{alumno if alumno else 'Alumno'}.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            st.success(f"Informe Estándar Generado: {objetivo}")
+            st.download_button("📥 Descargar Word Estándar", docx, f"Rutina_{alumno}_Estandar.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=get_key("dl_std"))
+
+        if st.button("🧬 GENERAR DOCUMENTO CON ANÁLISIS MUSCULAR", use_container_width=True, key=get_key("btn_ana")):
+            rutina_export = []
+            for item in seleccionados_data:
+                rm = rm_inputs[item['nombre']]
+                factor = intensidad_seleccionada / 100.0
+                peso_real = int(rm * factor)
+                rutina_export.append({
+                    "Ejercicio": item['nombre'],
+                    "Imagen": item['imagen'],
+                    "Reps": reps_seleccionadas,
+                    "Peso": peso_real,
+                    "Descanso": descanso_seleccionado,
+                    "Intensidad_Real": f"{intensidad_seleccionada}%",
+                    "agonistas": item.get('agonistas', ''),
+                    "sinergistas": item.get('sinergistas', ''),
+                    "estabilizadores": item.get('estabilizadores', '')
+                })
+            df = pd.DataFrame(rutina_export)
+            
+            if len(sel_tipos) > 1:
+                titulo_doc = "MIXTO"
+            elif len(sel_tipos) == 1:
+                titulo_doc = sel_tipos[0]
+            else:
+                titulo_doc = "GENERAL"
+            
+            docx = generar_word_final(
+                rutina_df=df, 
+                lista_estiramientos=estiramientos_finales, 
+                objetivo=objetivo, 
+                alumno=alumno, 
+                titulo_material=titulo_doc, 
+                intensidad_str=f"{intensidad_seleccionada}%", 
+                cardio_tipo=cardio_seleccion, 
+                cardio_tiempo=cardio_duracion,
+                series_str=series_finales,
+                incluir_analisis_muscular=True # <--- MODO ANÁLISIS
+            )
+            st.success(f"Informe con Análisis Muscular Generado: {objetivo}")
+            st.download_button("📥 Descargar Word con Análisis", docx, f"Rutina_{alumno}_Analisis.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=get_key("dl_ana"))
 
 # --- LÓGICA DE REINICIO ---
 def reset_app():
