@@ -235,6 +235,97 @@ def set_row_cant_split(row):
 def set_keep_with_next(paragraph):
     paragraph.paragraph_format.keep_with_next = True
 
+# --- XML MAGIC: FUNCIÓN PARA MARCA DE AGUA FLOTANTE ---
+def add_float_picture(p, image_path_or_stream, width=None, height=None):
+    """
+    Inserta una imagen flotante en el párrafo 'p'.
+    La imagen se posiciona "Behind Text" (detrás del texto)
+    y se ancla a la parte INFERIOR IZQUIERDA de la PÁGINA.
+    """
+    run = p.add_run()
+    inline = run.add_picture(image_path_or_stream, width=width, height=height)
+    inline_shape = inline._inline
+    
+    # IDs aleatorios
+    shape_id = random.randint(1, 10000)
+    
+    # Crear la estructura XML para 'anchor' (flotante)
+    # Namespaces
+    wp = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+    a  = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    pic = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
+    
+    # Convertir inline a anchor
+    # Paso 1: Crear el elemento <wp:anchor>
+    anchor = OxmlElement('wp:anchor')
+    anchor.set('distT', "0")
+    anchor.set('distB', "0")
+    anchor.set('distL', "0")
+    anchor.set('distR', "0")
+    anchor.set('simplePos', "0")
+    anchor.set('relativeHeight', "251658240")
+    anchor.set('behindDoc', "1") # 1 = Detrás del texto
+    anchor.set('locked', "0")
+    anchor.set('layoutInCell', "1")
+    anchor.set('allowOverlap', "1")
+    
+    # Paso 2: simplePos
+    simplePos = OxmlElement('wp:simplePos')
+    simplePos.set('x', "0")
+    simplePos.set('y', "0")
+    anchor.append(simplePos)
+    
+    # Paso 3: Posición Horizontal (Alineado a la Izquierda de la Página)
+    positionH = OxmlElement('wp:positionH')
+    positionH.set('relativeFrom', "page")
+    posOffsetH = OxmlElement('wp:posOffset')
+    posOffsetH.text = "720000" # Unos 2 cm desde el borde izq (en EMUs)
+    positionH.append(posOffsetH)
+    anchor.append(positionH)
+    
+    # Paso 4: Posición Vertical (Alineado Abajo de la Página)
+    positionV = OxmlElement('wp:positionV')
+    positionV.set('relativeFrom', "page")
+    alignV = OxmlElement('wp:align')
+    alignV.text = "bottom" # Alineado abajo
+    positionV.append(alignV)
+    # Ajuste fino hacia arriba para que no se salga (offset negativo visual simulado)
+    # En XML puro, 'bottom' pega al borde. Si queremos margen, usamos posOffset con valor alto.
+    # Pero align=bottom suele funcionar bien para pies de página.
+    anchor.append(positionV)
+    
+    # Paso 5: Extent (Tamaño)
+    extent = OxmlElement('wp:extent')
+    extent.set('cx', str(inline_shape.extent.cx))
+    extent.set('cy', str(inline_shape.extent.cy))
+    anchor.append(extent)
+    
+    # Paso 6: EffectExtent
+    effectExtent = OxmlElement('wp:effectExtent')
+    effectExtent.set('l', "0")
+    effectExtent.set('t', "0")
+    effectExtent.set('r', "0")
+    effectExtent.set('b', "0")
+    anchor.append(effectExtent)
+    
+    # Paso 7: WrapNone (Para que no afecte al texto)
+    wrapNone = OxmlElement('wp:wrapNone')
+    anchor.append(wrapNone)
+    
+    # Paso 8: DocPr
+    docPr = OxmlElement('wp:docPr')
+    docPr.set('id', str(shape_id))
+    docPr.set('name', f"Picture {shape_id}")
+    anchor.append(docPr)
+    
+    # Paso 9: Graphic (El contenido real de la imagen)
+    graphic = inline_shape.graphic
+    anchor.append(graphic)
+    
+    # Reemplazar el elemento inline por el anchor en el párrafo
+    inline_parent = inline_shape.getparent()
+    inline_parent.replace(inline_shape, anchor)
+
 # --- BUSCADOR ---
 def encontrar_imagen_recursiva(nombre_objetivo):
     if not nombre_objetivo or pd.isna(nombre_objetivo):
@@ -289,43 +380,32 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     section.left_margin = Cm(1.27)
     section.right_margin = Cm(1.27)
 
-    # --- PIE DE PÁGINA PROFESIONAL (OPTIMIZADO) ---
-    footer = section.footer
-    for p in footer.paragraphs:
+    # --- ENCABEZADO "HACK" (Marca de agua Fantasma) ---
+    header = section.header
+    # Limpiar header por si acaso
+    for p in header.paragraphs:
         p._element.getparent().remove(p._element)
     
-    # Tabla Footer 1x2 - Ajustada para no ocupar mucho espacio vertical
-    ft = footer.add_table(rows=1, cols=2, width=Inches(10.8))
-    ft.autofit = False
-    ft.columns[0].width = Inches(4.0) 
-    ft.columns[1].width = Inches(6.8) 
-    
-    # Celda Izq: Marca de agua
     path_watermark, _ = encontrar_imagen_recursiva("logo_firma")
     if not path_watermark:
         path_watermark, _ = encontrar_imagen_recursiva("watermark")
 
     if path_watermark:
-        c_logo = ft.cell(0,0)
-        c_logo.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-        p_logo = c_logo.paragraphs[0]
-        p_logo.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        r_logo = p_logo.add_run()
-        # --- CAMBIO CRUCIAL: TAMAÑO REDUCIDO ---
-        r_logo.add_picture(path_watermark, height=Inches(0.55)) 
+        p_header = header.add_paragraph()
+        # Inyectamos la imagen flotante que se irá al fondo de la página
+        add_float_picture(p_header, path_watermark, width=Inches(2.5)) # Ajusta ancho si es necesario
+
+    # --- PIE DE PÁGINA (SOLO PAGINACIÓN) ---
+    footer = section.footer
+    for p in footer.paragraphs:
+        p._element.getparent().remove(p._element)
     
-    # Celda Der: Número de Página
-    c_txt = ft.cell(0,1)
-    c_txt.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER # Alineado al centro vertical
-    p_txt = c_txt.paragraphs[0]
-    p_txt.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    run_pag_label = p_txt.add_run("Página ")
-    run_pag_label.font.size = Pt(10)
-    
-    run_num = p_txt.add_run()
-    run_num.font.size = Pt(10)
-    add_page_number(run_num)
+    p_foot = footer.add_paragraph()
+    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run_pag = p_foot.add_run("Página ")
+    run_pag.font.size = Pt(10)
+    add_page_number(p_foot.add_run())
+    p_foot.runs[-1].font.size = Pt(10) # Aplicar tamaño al número
 
     # --- CUERPO DEL DOCUMENTO ---
     
@@ -383,9 +463,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     h1 = doc.add_heading(level=1)
     titulo_seccion_1 = '1. Guía Visual de Ejercicios con Análisis Muscular' if incluir_analisis_muscular else '1. Guía Visual de Ejercicios'
-    run_h1 = h1.add_run(titulo_seccion_1)
-    run_h1.font.size = Pt(18)
-    run_h1.font.color.rgb = RGBColor(44, 62, 80)
+    h1.add_run(titulo_seccion_1).font.color.rgb = RGBColor(44, 62, 80)
 
     cardio_table = doc.add_table(rows=1, cols=2)
     cardio_table.style = 'Table Grid'
@@ -496,7 +574,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
         run_h3.font.size = Pt(18)
         run_h3.font.color.rgb = RGBColor(44, 62, 80)
-        h3.paragraph_format.keep_with_next = True
+        set_keep_with_next(h3)
 
         num_est = len(lista_estiramientos)
         cols_est = 4
@@ -587,6 +665,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
 
     p_note = doc.add_paragraph("Marca con una X la sensación global al terminar el entrenamiento.")
     p_note.style = "Caption"
+    set_keep_with_next(p_note) # Para que no quede huérfana
 
     doc.add_paragraph("\n")
 
@@ -628,7 +707,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_h6 = h6.add_run('6. RESUMEN DE FORMAS DE TRABAJO')
     run_h6.font.size = Pt(18)
     run_h6.font.color.rgb = RGBColor(44, 62, 80)
-    h6.paragraph_format.keep_with_next = True 
+    set_keep_with_next(h6)
     
     ruta_resumen, msg = encontrar_imagen_recursiva("tabla_resumen") 
     if ruta_resumen:
@@ -646,7 +725,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_h7 = h7.add_run('7. MI CIRCUITO DE TRABAJO SE BASA EN LOS SIGUIENTES PRINCIPIOS DE ENTRENAMIENTO Y SIGUE LA SIGUIENTE LÓGICA')
     run_h7.font.size = Pt(14)
     run_h7.font.color.rgb = RGBColor(44, 62, 80)
-    h7.paragraph_format.keep_with_next = True
+    set_keep_with_next(h7)
     
     p_inst = doc.add_paragraph("(Explica cómo y por qué estableces este circuito según tus objetivos y criterios científicos):")
     p_inst.paragraph_format.space_after = Pt(200) 
