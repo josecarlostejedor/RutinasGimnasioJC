@@ -603,4 +603,440 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     
     for line in clean_lines:
         if not line.strip(): 
-            continue
+            continue 
+            
+        p_teoria = doc.add_paragraph()
+        
+        if any(line.strip().startswith(e) for e in emojis_clave):
+            parts = line.strip().split(' ', 1)
+            emoji_part = parts[0]
+            text_part = parts[1] if len(parts) > 1 else ""
+            
+            r_emo = p_teoria.add_run(emoji_part + " ")
+            r_emo.font.size = Pt(18) 
+            
+            r_txt = p_teoria.add_run(text_part)
+            r_txt.font.size = Pt(11) 
+        else:
+            r_normal = p_teoria.add_run(line)
+            r_normal.font.size = Pt(11)
+
+    doc.add_paragraph("\n")
+
+    # --- SECCIÓN 6: RESUMEN (IMAGEN) ---
+    h6 = doc.add_heading(level=1)
+    run_h6 = h6.add_run('6. RESUMEN DE FORMAS DE TRABAJO')
+    run_h6.font.size = Pt(18)
+    run_h6.font.color.rgb = RGBColor(44, 62, 80)
+    h6.paragraph_format.keep_with_next = True 
+    
+    ruta_resumen, msg = encontrar_imagen_recursiva("tabla_resumen") 
+    if ruta_resumen:
+        try:
+            doc.add_picture(ruta_resumen, width=Inches(9.0))
+        except:
+            doc.add_paragraph("[Error al insertar la imagen de resumen]")
+    else:
+        doc.add_paragraph("[Imagen 'tabla_resumen' no encontrada]")
+
+    doc.add_paragraph("\n")
+
+    # --- SECCIÓN 7: REFLEXIÓN ALUMNO ---
+    h7 = doc.add_heading(level=1)
+    run_h7 = h7.add_run('7. MI CIRCUITO DE TRABAJO SE BASA EN LOS SIGUIENTES PRINCIPIOS DE ENTRENAMIENTO Y SIGUE LA SIGUIENTE LÓGICA')
+    run_h7.font.size = Pt(14)
+    run_h7.font.color.rgb = RGBColor(44, 62, 80)
+    h7.paragraph_format.keep_with_next = True
+    
+    p_inst = doc.add_paragraph("(Explica cómo y por qué estableces este circuito según tus objetivos y criterios científicos):")
+    p_inst.paragraph_format.space_after = Pt(200) 
+
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+# --- INTERFAZ STREAMLIT ---
+
+st.markdown("""
+<style>
+.big-font { font-size:30px !important; font-weight: bold; }
+.sub-font { font-size:20px !important; font-style: italic; color: #555; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<p class="big-font">Generador Científico de Rutinas creado por José Carlos Tejedor Lorenzo</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-font">Situación de aprendizaje: Trabajo en Salas de Musculación 1º de Bachillerato IES Lucía de Medrano.</p>', unsafe_allow_html=True)
+st.markdown("---")
+
+imagenes_encontradas = []
+for root, dirs, files in os.walk("."):
+    for file in files:
+        if file.lower().endswith(('.png', '.jpg', '.jpeg')):
+            imagenes_encontradas.append(file)
+if imagenes_encontradas:
+    st.sidebar.success(f"✅ {len(imagenes_encontradas)} imágenes detectadas.")
+else:
+    st.sidebar.error("❌ No hay imágenes en GitHub.")
+
+if DB_EJERCICIOS is None:
+    st.error("Error: DB_EJERCICIOS.xlsx no encontrado.")
+    st.stop()
+elif isinstance(DB_EJERCICIOS, str):
+    st.error(DB_EJERCICIOS)
+    st.stop()
+
+col1, col2 = st.columns(2)
+with col1:
+    alumno = st.text_input("Nombre del Alumno:", "", key=get_key("alumno"))
+    
+    # 1. OBTENER TIPOS
+    tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
+    tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
+    
+    # DEFAULT = None PARA EMPEZAR VACÍO
+    sel_tipos = st.multiselect(
+        "Material de Entrenamiento (Elige para empezar):", 
+        options=tipos_entreno, 
+        default=None, 
+        key=get_key("sel_material")
+    )
+    
+    cardio_seleccion = st.selectbox(
+        "Todos los días cardio:", 
+        ["Bicicleta", "Cinta de Correr", "Step", "Remo de cardio"],
+        key=get_key("cardio")
+    )
+
+with col2:
+    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
+    objetivo = st.selectbox("Objetivo:", 
+                            ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Programa de Pérdida de Peso", "Rehabilitación Muscular y Articular", "Fuerza Máxima", "Mantenimiento Muscular"], 
+                            key=get_key("objetivo"))
+    
+    intensidad_seleccionada = 0
+    reps_seleccionadas = ""
+    descanso_seleccionado = ""
+    cardio_duracion = "" 
+    series_finales = ""
+    
+    if objetivo == "Fuerza Máxima":
+        st.info("Rango: 1-5 Reps | Intensidad: 85-100% RM | 4-6 Series")
+        cardio_duracion = "Bajo"
+        series_finales = "4-6"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [85, 90, 95, 100], key=get_key("int_fm"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [1, 2, 3, 4, 5], key=get_key("reps_fm"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["3 min", "4 min", "5 min", "6 min"], key=get_key("desc_fm"))
+
+    elif objetivo == "Hipertrofia Muscular":
+        st.info("Rango: 6-12 Reps | Intensidad: 65-85% RM | 3-6 Series")
+        cardio_duracion = "Moderado"
+        series_finales = "3-6"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [65, 70, 75, 80, 85], key=get_key("int_hyp"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [6, 7, 8, 9, 10, 11, 12], key=get_key("reps_hyp"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["60 seg", "90 seg", "120 seg"], key=get_key("desc_hyp"))
+
+    elif objetivo == "Definición Muscular":
+        st.info("Rango: 10-15 Reps | Intensidad: 60-75% RM | 3-5 Series")
+        cardio_duracion = "Alto"
+        series_finales = "3-5"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75], key=get_key("int_def"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [10, 11, 12, 13, 14, 15], key=get_key("reps_def"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["30 seg", "45 seg", "60 seg"], key=get_key("desc_def"))
+
+    elif objetivo == "Programa de Pérdida de Peso":
+        st.info("Rango: 12-20 Rps | Intensidad: 50–70 % RM | 3-4 Series")
+        cardio_duracion = "30-60 min + HIIT"
+        series_finales = "3-4"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [50, 55, 60, 65, 70], key=get_key("int_pp"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [12, 13, 14, 15, 16, 17, 18, 19, 20], key=get_key("reps_pp"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["20 seg", "30 seg", "45 seg"], key=get_key("desc_pp"))
+
+    elif objetivo == "Resistencia Muscular":
+        st.info("Rango: 15-30+ Reps | Intensidad: 30-60% RM | 2-4 Series")
+        cardio_duracion = "Muy Alto"
+        series_finales = "2-4"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [30, 35, 40, 45, 50, 55, 60], key=get_key("int_res"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [15, 20, 25, 30], key=get_key("reps_res"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["15 seg", "30 seg", "45 seg"], key=get_key("desc_res"))
+
+    elif objetivo == "Mantenimiento Muscular":
+        st.info("Rango: 8-12 Reps | Intensidad: 60-75% RM | 2-3 Series")
+        cardio_duracion = "Moderado"
+        series_finales = "2-3"
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [60, 65, 70, 75], key=get_key("int_man"))
+        with col_b:
+            val_reps = st.selectbox("Repeticiones:", [8, 9, 10, 11, 12], key=get_key("reps_man"))
+            reps_seleccionadas = str(val_reps)
+        with col_c:
+            descanso_seleccionado = st.selectbox("Descanso:", ["60 seg", "75 seg", "90 seg"], key=get_key("desc_man"))
+
+    elif objetivo == "Rehabilitación Muscular y Articular":
+        st.info("Rango: 1-30 Reps | Intensidad: 20-60% RM | 1-5 Series | Depende Fase")
+        cardio_duracion = "Muy bajo"
+        col_rh1, col_rh2, col_rh3 = st.columns(3)
+        with col_rh1:
+            intensidad_seleccionada = st.selectbox("Intensidad (% RM):", [20, 30, 40, 50, 60], key=get_key("int_rehab"))
+        with col_rh2:
+            val_reps = st.number_input("Nº Repeticiones:", 1, 30, 12, key=get_key("reps_rehab"))
+            reps_seleccionadas = str(val_reps)
+        with col_rh3:
+            descanso_seleccionado = st.selectbox("Descanso:", ["30 seg", "45 seg", "1 min", "2 min"], key=get_key("desc_rehab"))
+        
+        series_finales = st.selectbox("Series:", ["1", "2", "3", "4", "5"], index=2, key=get_key("ser_reh"))
+
+if sel_tipos:
+    ej_filtrados = [e for e in DB_EJERCICIOS if e['tipo'] in sel_tipos]
+    
+    # RANGO 1-12
+    default_val = 8 if objetivo == "Rehabilitación Muscular y Articular" else 6
+    max_val = min(12, len(ej_filtrados)) 
+    
+    if default_val > max_val: default_val = max_val
+    if default_val < 1: default_val = 1
+    
+    num_ej = st.slider("Cantidad de Ejercicios:", 1, 12, default_val, key=get_key("slider_ej"))
+else:
+    st.warning("👈 Selecciona primero el Material de Entrenamiento para ver los ejercicios.")
+    st.stop()
+
+st.subheader("Selección de Ejercicios")
+
+if sel_tipos:
+    with st.expander(f"📸 Ver Galería Visual de ejercicios disponibles ({', '.join(sel_tipos)})"):
+        cols_galeria = st.columns(6)
+        for i, ej in enumerate(ej_filtrados):
+            with cols_galeria[i % 6]:
+                ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
+                if ruta:
+                    st.image(ruta, caption=ej['nombre'], use_container_width=True)
+                else:
+                    st.caption(f"❌ {ej['nombre']}")
+
+    nombres_fil = [e['nombre'] for e in ej_filtrados]
+    seleccion = st.multiselect("Elige los ejercicios:", nombres_fil, max_selections=num_ej, key=get_key("sel_ej"))
+
+    rellenar_auto = st.checkbox(f"Rellenar automáticamente hasta llegar a {num_ej} ejercicios", value=True, key=get_key("check_auto"))
+
+    seleccionados_data = []
+    nombres_finales = seleccion.copy()
+
+    # --- ESTABILIZACIÓN DE LA SELECCIÓN ---
+    config_id = f"{sel_tipos}_{num_ej}_{seleccion}_{rellenar_auto}_{st.session_state.reset_counter}"
+    
+    if 'last_config_id' not in st.session_state or st.session_state.last_config_id != config_id:
+        if rellenar_auto and len(nombres_finales) < num_ej:
+            pool = [x for x in ej_filtrados if x['nombre'] not in nombres_finales]
+            needed = num_ej - len(nombres_finales)
+            if needed <= len(pool):
+                extras = random.sample(pool, needed)
+                nombres_finales.extend([x['nombre'] for x in extras])
+        st.session_state.final_names = nombres_finales
+        st.session_state.last_config_id = config_id
+    
+    nombres_finales_estables = st.session_state.final_names
+    
+    seleccionados_data = []
+    for nom in nombres_finales_estables:
+        obj_ejercicio = next((x for x in ej_filtrados if x['nombre'] == nom), None)
+        if obj_ejercicio:
+            seleccionados_data.append(obj_ejercicio)
+
+    st.markdown("---")
+    if rellenar_auto:
+        st.caption("Has seleccionado (o se ha completado automáticamente):")
+    else:
+        st.caption("Has seleccionado estrictamente:")
+        
+    cols_prev = st.columns(6)
+    for i, item in enumerate(seleccionados_data):
+        with cols_prev[i % 6]:
+            ruta, msg = encontrar_imagen_recursiva(item['imagen'])
+            if ruta:
+                st.image(ruta, caption=item['nombre'], use_container_width=True)
+            else:
+                st.error(f"❌ {item['imagen']}")
+
+    st.subheader("Cargas de Entrenamiento")
+    st.write(f"Introduce el 1RM actual. Se calculará el **{intensidad_seleccionada}%** automáticamente.")
+    cols = st.columns(3)
+    rm_inputs = {}
+    for i, ej in enumerate(seleccionados_data):
+        with cols[i%3]:
+            # === MEMORIA INTELIGENTE PARA 1RM ===
+            val_key = f"rm_{i}_{ej['nombre']}_{st.session_state.reset_counter}"
+            rm_inputs[ej['nombre']] = st.number_input(
+                f"1RM {ej['nombre']} (kg)", 
+                min_value=0, 
+                max_value=500, 
+                value=60, 
+                step=1, 
+                key=val_key
+            )
+
+    st.markdown("---")
+    st.subheader("Vuelta a la Calma: Estiramientos")
+
+    pool_estiramientos = [e for e in DB_EJERCICIOS if 'estiramiento' in str(e['tipo']).lower()]
+    nombres_est = [e['nombre'] for e in pool_estiramientos]
+
+    if pool_estiramientos:
+        with st.expander("🧘 Ver Galería Visual de Estiramientos disponibles"):
+            cols_est_gal = st.columns(6)
+            for i, ej in enumerate(pool_estiramientos):
+                with cols_est_gal[i % 6]:
+                    ruta, msg = encontrar_imagen_recursiva(ej['imagen'])
+                    if ruta:
+                        st.image(ruta, caption=ej['nombre'], use_container_width=True)
+                    else:
+                        st.caption(f"❌ {ej['nombre']}")
+
+        num_est_select = st.slider("Cantidad de estiramientos:", 1, 12, 4, key=get_key("slider_est"))
+        seleccion_est = st.multiselect("Elige estiramientos:", nombres_est, max_selections=num_est_select, key=get_key("sel_est"))
+        
+        # Estabilización de estiramientos
+        config_est_id = f"EST_{num_est_select}_{seleccion_est}_{st.session_state.reset_counter}"
+        
+        if 'last_est_id' not in st.session_state or st.session_state.last_est_id != config_est_id:
+            estiramientos_finales_nombres = seleccion_est.copy()
+            if len(estiramientos_finales_nombres) < num_est_select:
+                pool_est = [x['nombre'] for x in pool_estiramientos if x['nombre'] not in estiramientos_finales_nombres]
+                needed_est = num_est_select - len(estiramientos_finales_nombres)
+                if needed_est <= len(pool_est):
+                     estiramientos_finales_nombres.extend(random.sample(pool_est, needed_est))
+            st.session_state.final_est_names = estiramientos_finales_nombres
+            st.session_state.last_est_id = config_est_id
+            
+        estiramientos_finales = []
+        for nom in st.session_state.final_est_names:
+             estiramientos_finales.append(next(x for x in pool_estiramientos if x['nombre'] == nom))
+
+    else:
+        st.warning("⚠️ No se han encontrado ejercicios marcados como 'Estiramientos' en el Excel.")
+        estiramientos_finales = []
+
+    # --- BOTONES FINALES ---
+    st.write("---")
+    st.subheader("Generar Informe")
+    col_pdf, col_reset = st.columns([2, 1])
+
+    with col_pdf:
+        if st.button("📄 GENERAR DOCUMENTO ESTÁNDAR", type="primary", use_container_width=True, key=get_key("btn_std")):
+            rutina_export = []
+            for item in seleccionados_data:
+                rm = rm_inputs[item['nombre']]
+                factor = intensidad_seleccionada / 100.0
+                peso_real = int(rm * factor)
+                rutina_export.append({
+                    "Ejercicio": item['nombre'],
+                    "Imagen": item['imagen'],
+                    "Reps": reps_seleccionadas,
+                    "Peso": peso_real,
+                    "Descanso": descanso_seleccionado,
+                    "Intensidad_Real": f"{intensidad_seleccionada}%",
+                    "agonistas": item.get('agonistas', ''),
+                    "sinergistas": item.get('sinergistas', ''),
+                    "estabilizadores": item.get('estabilizadores', '')
+                })
+            df = pd.DataFrame(rutina_export)
+            
+            if len(sel_tipos) > 1:
+                titulo_doc = "MIXTO"
+            elif len(sel_tipos) == 1:
+                titulo_doc = sel_tipos[0]
+            else:
+                titulo_doc = "GENERAL"
+            
+            docx = generar_word_final(
+                rutina_df=df, 
+                lista_estiramientos=estiramientos_finales, 
+                objetivo=objetivo, 
+                alumno=alumno, 
+                titulo_material=titulo_doc, 
+                intensidad_str=f"{intensidad_seleccionada}%", 
+                cardio_tipo=cardio_seleccion, 
+                cardio_tiempo=cardio_duracion,
+                series_str=series_finales,
+                incluir_analisis_muscular=False # <--- MODO ESTÁNDAR
+            )
+            st.success(f"Informe Estándar Generado: {objetivo}")
+            st.download_button("📥 Descargar Word Estándar", docx, f"Rutina_{alumno}_Estandar.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=get_key("dl_std"))
+
+        if st.button("🧬 GENERAR DOCUMENTO CON ANÁLISIS MUSCULAR", use_container_width=True, key=get_key("btn_ana")):
+            rutina_export = []
+            for item in seleccionados_data:
+                rm = rm_inputs[item['nombre']]
+                factor = intensidad_seleccionada / 100.0
+                peso_real = int(rm * factor)
+                rutina_export.append({
+                    "Ejercicio": item['nombre'],
+                    "Imagen": item['imagen'],
+                    "Reps": reps_seleccionadas,
+                    "Peso": peso_real,
+                    "Descanso": descanso_seleccionado,
+                    "Intensidad_Real": f"{intensidad_seleccionada}%",
+                    "agonistas": item.get('agonistas', ''),
+                    "sinergistas": item.get('sinergistas', ''),
+                    "estabilizadores": item.get('estabilizadores', '')
+                })
+            df = pd.DataFrame(rutina_export)
+            
+            if len(sel_tipos) > 1:
+                titulo_doc = "MIXTO"
+            elif len(sel_tipos) == 1:
+                titulo_doc = sel_tipos[0]
+            else:
+                titulo_doc = "GENERAL"
+            
+            docx = generar_word_final(
+                rutina_df=df, 
+                lista_estiramientos=estiramientos_finales, 
+                objetivo=objetivo, 
+                alumno=alumno, 
+                titulo_material=titulo_doc, 
+                intensidad_str=f"{intensidad_seleccionada}%", 
+                cardio_tipo=cardio_seleccion, 
+                cardio_tiempo=cardio_duracion,
+                series_str=series_finales,
+                incluir_analisis_muscular=True # <--- MODO ANÁLISIS
+            )
+            st.success(f"Informe con Análisis Muscular Generado: {objetivo}")
+            st.download_button("📥 Descargar Word con Análisis", docx, f"Rutina_{alumno}_Analisis.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=get_key("dl_ana"))
+
+# --- LÓGICA DE REINICIO ---
+def reset_app():
+    st.session_state.reset_counter += 1
+    st.cache_data.clear()
+    if 'last_config_id' in st.session_state: del st.session_state.last_config_id
+    if 'last_est_id' in st.session_state: del st.session_state.last_est_id
+
+with col_reset:
+    st.write("")
+    st.button("🔄 Reiniciar", use_container_width=True, on_click=reset_app)
