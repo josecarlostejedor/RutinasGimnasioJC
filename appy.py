@@ -5,6 +5,7 @@ import os
 from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.section import WD_ORIENT
 from docx.oxml import OxmlElement, ns
 from docx.oxml.ns import qn
@@ -226,10 +227,21 @@ def style_header_cell(cell, text, width_inches=None):
     set_cell_bg_color(cell, "2E4053")
 
 def set_row_cant_split(row):
+    """Evita que una fila se divida (pero no pega la fila a la siguiente)"""
     tr = row._tr
     trPr = tr.get_or_add_trPr()
     cantSplit = OxmlElement('w:cantSplit')
     trPr.append(cantSplit)
+
+def set_row_keep_next(row):
+    """Fuerza que la fila se mantenga pegada a la siguiente (KeepWithNext)"""
+    tr = row._tr
+    trPr = tr.get_or_add_trPr()
+    # No existe w:keepNext en trPr directo, se aplica a los párrafos de la celda
+    # Recorremos celdas
+    for cell in row.cells:
+        for p in cell.paragraphs:
+            p.paragraph_format.keep_with_next = True
 
 # --- BUSCADOR DE IMÁGENES ---
 def encontrar_imagen_recursiva(nombre_objetivo):
@@ -247,7 +259,7 @@ def encontrar_imagen_recursiva(nombre_objetivo):
                     return os.path.join(root, filename), "Por Nombre"
     return None, f"No encontrado"
 
-# --- CARGAR EXCEL (CON SOPORTE PARA ESTABILIZADORES) ---
+# --- CARGAR EXCEL ---
 @st.cache_data
 def cargar_ejercicios():
     try:
@@ -256,23 +268,18 @@ def cargar_ejercicios():
             df.columns = df.columns.str.strip().str.lower()
             if 'nombre' not in df.columns:
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
-            
-            # Columnas obligatorias básicas
             for col in ['tipo', 'imagen', 'desc']:
                 if col not in df.columns: df[col] = ""
-                
-            # Columnas para análisis muscular (AHORA INCLUYE ESTABILIZADORES)
             for col in ['agonistas', 'sinergistas', 'estabilizadores']:
                 if col not in df.columns: df[col] = ""
             
-            # Normalización de texto
+            # Normalización
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.replace('Rehabilitacion', 'Rehabilitación', regex=False)
             df['tipo'] = df['tipo'].str.replace('Rotualiana', 'Rotuliana', regex=False)
             df['tipo'] = df['tipo'].str.strip()
             
-            # Rellenar nulos
             df = df.fillna("")
             return df.to_dict('records')
         else:
@@ -282,7 +289,7 @@ def cargar_ejercicios():
 
 DB_EJERCICIOS = cargar_ejercicios()
 
-# --- GENERADOR WORD (CON ESTABILIZADORES) ---
+# --- GENERADOR WORD ---
 def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_material, intensidad_str, cardio_tipo, cardio_tiempo, series_str, incluir_analisis_muscular):
     doc = Document()
     section = doc.sections[0]
@@ -294,13 +301,34 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     section.left_margin = Cm(1.27)
     section.right_margin = Cm(1.27)
 
-    # Footer
+    # --- PIE DE PÁGINA PROFESIONAL (LOGO IZQ + TEXTO DER) ---
     footer = section.footer
-    p_foot = footer.paragraphs[0]
-    p_foot.alignment = WD_ALIGN_PARAGRAPH.RIGHT 
-    run_autor = p_foot.add_run("Programa creado por José Carlos Tejedor Lorenzo.            Página ")
+    # Eliminamos cualquier párrafo existente
+    for p in footer.paragraphs:
+        p._element.getparent().remove(p._element)
+    
+    # Creamos tabla para el footer: 1 fila, 2 columnas (ancho total)
+    ft = footer.add_table(rows=1, cols=2, width=Inches(10.8))
+    ft.autofit = False
+    ft.columns[0].width = Inches(3.0) # Izquierda para logo
+    ft.columns[1].width = Inches(7.8) # Derecha para texto
+    
+    # Celda Izquierda: Logo Firma
+    cell_logo = ft.cell(0,0)
+    # Buscamos la imagen "logo_firma"
+    path_firma, _ = encontrar_imagen_recursiva("logo_firma")
+    if path_firma:
+        p_logo = cell_logo.paragraphs[0]
+        r_logo = p_logo.add_run()
+        r_logo.add_picture(path_firma, height=Inches(0.8)) # Ajustar altura de firma
+    
+    # Celda Derecha: Texto
+    cell_text = ft.cell(0,1)
+    p_text = cell_text.paragraphs[0]
+    p_text.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run_autor = p_text.add_run("Programa creado por José Carlos Tejedor Lorenzo.            Página ")
     run_autor.font.size = Pt(10)
-    run_num = p_foot.add_run()
+    run_num = p_text.add_run()
     run_num.font.size = Pt(10)
     add_page_number(run_num)
 
@@ -392,7 +420,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     vis_table = doc.add_table(rows=rows_visual, cols=cols_visual)
     vis_table.style = 'Table Grid'
     
-    # Altura de fila: Aumentada un poco más para que quepan los 3 grupos musculares
     TR_HEIGHT_TWIPS = 3800 if incluir_analisis_muscular else 2800 
     
     for row in vis_table.rows:
@@ -411,7 +438,6 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # 1. Imagen
         ruta_img, msg = encontrar_imagen_recursiva(row_data['Imagen'])
         if ruta_img:
             try:
@@ -424,30 +450,25 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         else:
             p.add_run(f"\n[FOTO NO DISPONIBLE]\n")
         
-        # 2. Nombre Ejercicio
         run_nom = p.add_run("\n" + row_data['Ejercicio'])
         run_nom.font.bold = True
         run_nom.font.size = Pt(10)
         
-        # 3. Análisis Muscular (Si se solicita)
         if incluir_analisis_muscular:
             p.add_run("\n" + "_"*25 + "\n").font.size = Pt(6)
             
-            # Agonistas
             run_ago_label = p.add_run("Músculos Agonistas:\n")
             run_ago_label.font.bold = True
             run_ago_label.font.size = Pt(8)
             ago_text = str(row_data.get('agonistas', ''))
             p.add_run(f"{ago_text}\n").font.size = Pt(8)
             
-            # Sinergistas
             run_sin_label = p.add_run("Músculos Sinergistas:\n")
             run_sin_label.font.bold = True
             run_sin_label.font.size = Pt(8)
             sin_text = str(row_data.get('sinergistas', ''))
             p.add_run(f"{sin_text}\n").font.size = Pt(8)
 
-            # Estabilizadores (NUEVO)
             run_est_label = p.add_run("Músculos Estabilizadores:\n")
             run_est_label.font.bold = True
             run_est_label.font.size = Pt(8)
@@ -530,17 +551,24 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             run_nom.font.size = Pt(9)
         doc.add_paragraph("\n")
 
+    # ================= SECCIÓN 4: BORG (BLOQUE SÓLIDO) =================
     h4 = doc.add_heading(level=1)
     run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE) - Escala de Borg')
     run_h4.font.size = Pt(18)
     run_h4.font.color.rgb = RGBColor(44, 62, 80)
-    h4.paragraph_format.keep_with_next = True
+    
+    # 1. Pegar el título a la tabla
+    h4.paragraph_format.keep_with_next = True 
 
     borg_table = doc.add_table(rows=3, cols=5)
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
-    for row in borg_table.rows:
-        set_row_cant_split(row)
+    
+    # 2. Pegar todas las filas entre sí (KeepWithNext + CantSplit)
+    for i, row in enumerate(borg_table.rows):
+        set_row_cant_split(row) # No romper fila por la mitad
+        if i < 2: # Aplicar KeepNext a todas menos a la última
+            set_row_keep_next(row)
 
     borg_data = [
         {"val": "6-8", "txt": "Muy Ligero", "icon": "🙂", "color": "A9DFBF"},
