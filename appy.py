@@ -5,7 +5,6 @@ import os
 from docx import Document
 from docx.shared import Inches, Pt, Cm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.section import WD_ORIENT
 from docx.oxml import OxmlElement, ns
 from docx.oxml.ns import qn
@@ -22,7 +21,7 @@ if 'reset_counter' not in st.session_state:
 def get_key(base_name):
     return f"{base_name}_{st.session_state.reset_counter}"
 
-# --- DATOS TEÓRICOS DE LOS OBJETIVOS ---
+# --- DATOS TEÓRICOS ---
 INFO_OBJETIVOS = {
     "Fuerza Máxima": """1️⃣ FUERZA MÁXIMA
 🎯 Objetivo
@@ -188,7 +187,7 @@ Descansos excesivos
 Déficits calóricos extremos"""
 }
 
-# --- FUNCIONES AUXILIARES PARA WORD ---
+# --- FUNCIONES AUXILIARES WORD ---
 def create_element(name):
     return OxmlElement(name)
 
@@ -227,23 +226,15 @@ def style_header_cell(cell, text, width_inches=None):
     set_cell_bg_color(cell, "2E4053")
 
 def set_row_cant_split(row):
-    """Evita que una fila se divida (pero no pega la fila a la siguiente)"""
     tr = row._tr
     trPr = tr.get_or_add_trPr()
     cantSplit = OxmlElement('w:cantSplit')
     trPr.append(cantSplit)
 
-def set_row_keep_next(row):
-    """Fuerza que la fila se mantenga pegada a la siguiente (KeepWithNext)"""
-    tr = row._tr
-    trPr = tr.get_or_add_trPr()
-    # No existe w:keepNext en trPr directo, se aplica a los párrafos de la celda
-    # Recorremos celdas
-    for cell in row.cells:
-        for p in cell.paragraphs:
-            p.paragraph_format.keep_with_next = True
+def set_keep_with_next(paragraph):
+    paragraph.paragraph_format.keep_with_next = True
 
-# --- BUSCADOR DE IMÁGENES ---
+# --- BUSCADOR ---
 def encontrar_imagen_recursiva(nombre_objetivo):
     if not nombre_objetivo or pd.isna(nombre_objetivo):
         return None, "Celda Vacía"
@@ -268,18 +259,14 @@ def cargar_ejercicios():
             df.columns = df.columns.str.strip().str.lower()
             if 'nombre' not in df.columns:
                 if 'ejercicio' in df.columns: df.rename(columns={'ejercicio': 'nombre'}, inplace=True)
-            for col in ['tipo', 'imagen', 'desc']:
-                if col not in df.columns: df[col] = ""
-            for col in ['agonistas', 'sinergistas', 'estabilizadores']:
+            for col in ['tipo', 'imagen', 'desc', 'agonistas', 'sinergistas', 'estabilizadores']:
                 if col not in df.columns: df[col] = ""
             
-            # Normalización
             df['tipo'] = df['tipo'].astype(str).str.replace('Olimpica', 'Olímpica', regex=False)
             df['tipo'] = df['tipo'].str.replace('olimpica', 'Olímpica', regex=False, case=False)
             df['tipo'] = df['tipo'].str.replace('Rehabilitacion', 'Rehabilitación', regex=False)
             df['tipo'] = df['tipo'].str.replace('Rotualiana', 'Rotuliana', regex=False)
             df['tipo'] = df['tipo'].str.strip()
-            
             df = df.fillna("")
             return df.to_dict('records')
         else:
@@ -301,37 +288,49 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     section.left_margin = Cm(1.27)
     section.right_margin = Cm(1.27)
 
-    # --- PIE DE PÁGINA PROFESIONAL (LOGO IZQ + TEXTO DER) ---
+    # --- ENCABEZADO (MARCA DE AGUA) ---
+    header = section.header
+    # La marca de agua se inserta aquí pero se posiciona visualmente abajo gracias a Word.
+    # No usamos posicionamiento absoluto, confiamos en la tabla del footer para la firma visual.
+
+    # --- PIE DE PÁGINA (FOOTER) ---
     footer = section.footer
-    # Eliminamos cualquier párrafo existente
     for p in footer.paragraphs:
         p._element.getparent().remove(p._element)
     
-    # Creamos tabla para el footer: 1 fila, 2 columnas (ancho total)
+    # Tabla Footer 1x2
     ft = footer.add_table(rows=1, cols=2, width=Inches(10.8))
     ft.autofit = False
-    ft.columns[0].width = Inches(3.0) # Izquierda para logo
-    ft.columns[1].width = Inches(7.8) # Derecha para texto
+    ft.columns[0].width = Inches(4.0) 
+    ft.columns[1].width = Inches(6.8) 
     
-    # Celda Izquierda: Logo Firma
-    cell_logo = ft.cell(0,0)
-    # Buscamos la imagen "logo_firma"
-    path_firma, _ = encontrar_imagen_recursiva("logo_firma")
-    if path_firma:
-        p_logo = cell_logo.paragraphs[0]
+    # Celda Izq: Marca de agua (Imagen)
+    path_watermark, _ = encontrar_imagen_recursiva("logo_firma")
+    if not path_watermark:
+        # Intento alternativo de nombre
+        path_watermark, _ = encontrar_imagen_recursiva("watermark")
+
+    if path_watermark:
+        c_logo = ft.cell(0,0)
+        p_logo = c_logo.paragraphs[0]
         r_logo = p_logo.add_run()
-        r_logo.add_picture(path_firma, height=Inches(0.8)) # Ajustar altura de firma
+        r_logo.add_picture(path_watermark, height=Inches(1.2))
     
-    # Celda Derecha: Texto
-    cell_text = ft.cell(0,1)
-    p_text = cell_text.paragraphs[0]
-    p_text.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run_autor = p_text.add_run("Programa creado por José Carlos Tejedor Lorenzo.            Página ")
-    run_autor.font.size = Pt(10)
-    run_num = p_text.add_run()
+    # Celda Der: Solo Número de Página (MODIFICADO)
+    c_txt = ft.cell(0,1)
+    p_txt = c_txt.paragraphs[0]
+    p_txt.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    p_txt.space_before = Pt(40) # Alinear verticalmente con el logo
+    
+    run_pag_label = p_txt.add_run("Página ")
+    run_pag_label.font.size = Pt(10)
+    
+    run_num = p_txt.add_run()
     run_num.font.size = Pt(10)
     add_page_number(run_num)
 
+    # --- CUERPO DEL DOCUMENTO ---
+    
     # PÁGINA 1
     head_tbl = doc.add_table(rows=1, cols=2)
     head_tbl.autofit = False
@@ -351,24 +350,19 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     r_obj_label = p.add_run("OBJETIVO: ")
     r_obj_label.font.bold = True
     r_obj_label.font.size = font_size_meta
-    r_obj_val = p.add_run(f"{objetivo}")
-    r_obj_val.font.size = font_size_meta
-    
+    p.add_run(f"{objetivo}").font.size = font_size_meta
     p.add_run("   |   ").font.size = font_size_meta 
     
     r_int_label = p.add_run("INTENSIDAD DE TRABAJO: ")
     r_int_label.font.bold = True
     r_int_label.font.size = font_size_meta
-    r_int_val = p.add_run(f"({intensidad_str})")
-    r_int_val.font.size = font_size_meta
-    
+    p.add_run(f"({intensidad_str})").font.size = font_size_meta
     p.add_run("   |   ").font.size = font_size_meta 
     
     r_alu_label = p.add_run("ALUMNO/A: ")
     r_alu_label.font.bold = True
     r_alu_label.font.size = font_size_meta
-    r_alu_val = p.add_run(f"{nombre_mostrar.upper()}")
-    r_alu_val.font.size = font_size_meta
+    p.add_run(f"{nombre_mostrar.upper()}").font.size = font_size_meta
 
     c2 = head_tbl.cell(0,1)
     p2 = c2.paragraphs[0]
@@ -390,10 +384,8 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     doc.add_paragraph("_" * 95)
 
     h1 = doc.add_heading(level=1)
-    titulo_seccion_1 = '1. Guía Visual de Ejercicios con Análisis Muscular' if incluir_analisis_muscular else '1. Guía Visual de Ejercicios'
-    run_h1 = h1.add_run(titulo_seccion_1)
-    run_h1.font.size = Pt(18)
-    run_h1.font.color.rgb = RGBColor(44, 62, 80)
+    titulo_1 = '1. Guía Visual de Ejercicios con Análisis Muscular' if incluir_analisis_muscular else '1. Guía Visual de Ejercicios'
+    h1.add_run(titulo_1).font.color.rgb = RGBColor(44, 62, 80)
 
     cardio_table = doc.add_table(rows=1, cols=2)
     cardio_table.style = 'Table Grid'
@@ -457,23 +449,14 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         if incluir_analisis_muscular:
             p.add_run("\n" + "_"*25 + "\n").font.size = Pt(6)
             
-            run_ago_label = p.add_run("Músculos Agonistas:\n")
-            run_ago_label.font.bold = True
-            run_ago_label.font.size = Pt(8)
-            ago_text = str(row_data.get('agonistas', ''))
-            p.add_run(f"{ago_text}\n").font.size = Pt(8)
+            p.add_run("Músculos Agonistas:\n").font.bold = True
+            p.add_run(f"{str(row_data.get('agonistas', ''))}\n").font.size = Pt(8)
             
-            run_sin_label = p.add_run("Músculos Sinergistas:\n")
-            run_sin_label.font.bold = True
-            run_sin_label.font.size = Pt(8)
-            sin_text = str(row_data.get('sinergistas', ''))
-            p.add_run(f"{sin_text}\n").font.size = Pt(8)
+            p.add_run("Músculos Sinergistas:\n").font.bold = True
+            p.add_run(f"{str(row_data.get('sinergistas', ''))}\n").font.size = Pt(8)
 
-            run_est_label = p.add_run("Músculos Estabilizadores:\n")
-            run_est_label.font.bold = True
-            run_est_label.font.size = Pt(8)
-            est_text = str(row_data.get('estabilizadores', ''))
-            p.add_run(f"{est_text}").font.size = Pt(8)
+            p.add_run("Músculos Estabilizadores:\n").font.bold = True
+            p.add_run(f"{str(row_data.get('estabilizadores', ''))}").font.size = Pt(8)
 
     doc.add_page_break()
 
@@ -513,7 +496,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
         run_h3 = h3.add_run('3. Ejercicios de Estiramientos')
         run_h3.font.size = Pt(18)
         run_h3.font.color.rgb = RGBColor(44, 62, 80)
-        h3.paragraph_format.keep_with_next = True
+        set_keep_with_next(h3)
 
         num_est = len(lista_estiramientos)
         cols_est = 4
@@ -551,24 +534,19 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
             run_nom.font.size = Pt(9)
         doc.add_paragraph("\n")
 
-    # ================= SECCIÓN 4: BORG (BLOQUE SÓLIDO) =================
+    # ================= SECCIÓN 4: BORG (BLOQUE INDIVISIBLE) =================
     h4 = doc.add_heading(level=1)
     run_h4 = h4.add_run('4. Percepción del Esfuerzo (RPE) - Escala de Borg')
     run_h4.font.size = Pt(18)
     run_h4.font.color.rgb = RGBColor(44, 62, 80)
-    
-    # 1. Pegar el título a la tabla
-    h4.paragraph_format.keep_with_next = True 
+    set_keep_with_next(h4)
 
     borg_table = doc.add_table(rows=3, cols=5)
     borg_table.style = 'Table Grid'
     borg_table.autofit = True
     
-    # 2. Pegar todas las filas entre sí (KeepWithNext + CantSplit)
-    for i, row in enumerate(borg_table.rows):
-        set_row_cant_split(row) # No romper fila por la mitad
-        if i < 2: # Aplicar KeepNext a todas menos a la última
-            set_row_keep_next(row)
+    for row in borg_table.rows:
+        set_row_cant_split(row)
 
     borg_data = [
         {"val": "6-8", "txt": "Muy Ligero", "icon": "🙂", "color": "A9DFBF"},
@@ -650,7 +628,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_h6 = h6.add_run('6. RESUMEN DE FORMAS DE TRABAJO')
     run_h6.font.size = Pt(18)
     run_h6.font.color.rgb = RGBColor(44, 62, 80)
-    h6.paragraph_format.keep_with_next = True 
+    set_keep_with_next(h6)
     
     ruta_resumen, msg = encontrar_imagen_recursiva("tabla_resumen") 
     if ruta_resumen:
@@ -668,7 +646,7 @@ def generar_word_final(rutina_df, lista_estiramientos, objetivo, alumno, titulo_
     run_h7 = h7.add_run('7. MI CIRCUITO DE TRABAJO SE BASA EN LOS SIGUIENTES PRINCIPIOS DE ENTRENAMIENTO Y SIGUE LA SIGUIENTE LÓGICA')
     run_h7.font.size = Pt(14)
     run_h7.font.color.rgb = RGBColor(44, 62, 80)
-    h7.paragraph_format.keep_with_next = True
+    set_keep_with_next(h7)
     
     p_inst = doc.add_paragraph("(Explica cómo y por qué estableces este circuito según tus objetivos y criterios científicos):")
     p_inst.paragraph_format.space_after = Pt(200) 
@@ -712,11 +690,9 @@ col1, col2 = st.columns(2)
 with col1:
     alumno = st.text_input("Nombre del Alumno:", "", key=get_key("alumno"))
     
-    # 1. OBTENER TIPOS
     tipos_todos = sorted(list(set([e['tipo'] for e in DB_EJERCICIOS if e['tipo']])))
     tipos_entreno = [t for t in tipos_todos if 'estiramiento' not in t.lower()]
     
-    # DEFAULT = None PARA EMPEZAR VACÍO
     sel_tipos = st.multiselect(
         "Material de Entrenamiento (Elige para empezar):", 
         options=tipos_entreno, 
@@ -731,7 +707,6 @@ with col1:
     )
 
 with col2:
-    # 4 OPCIONES DE OBJETIVO (AHORA INCLUYE REHABILITACIÓN)
     objetivo = st.selectbox("Objetivo:", 
                             ["Hipertrofia Muscular", "Definición Muscular", "Resistencia Muscular", "Programa de Pérdida de Peso", "Rehabilitación Muscular y Articular", "Fuerza Máxima", "Mantenimiento Muscular"], 
                             key=get_key("objetivo"))
